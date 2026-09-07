@@ -1,0 +1,13 @@
+{
+  "name": "lilly-job-application-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "playwright": "1.55.0"
+  }
+}
