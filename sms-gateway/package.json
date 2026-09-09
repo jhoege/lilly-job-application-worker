@@ -1,0 +1,14 @@
+{
+  "name": "lilly-sms-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "google-auth-library": "^10.3.0",
+    "twilio": "^5.8.0"
+  }
+}
