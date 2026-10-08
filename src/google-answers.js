@@ -148,3 +148,34 @@ export async function upsertApplicationStatus(job,status,reason='',extra={}){
  if(!response.ok)throw Error('Application ledger write failed HTTP '+response.status);
  return {updated:true,status:normalizedStatus};
 }
+
+export async function smsJobSummary(command='jobs'){
+ const access=await token();
+ const ledger=await ledgerRows(access);
+ const applications=ledger.slice(1).filter(r=>String(r[2]||r[3]||'').trim());
+ const counts={submitted:0,blocked:0,closed:0,other:0};
+ for(const r of applications){const st=String(r[4]||'').toLowerCase();if(/submitted verified|applied verified/.test(st))counts.submitted++;else if(/closed/.test(st))counts.closed++;else if(/saved|blocked|not found|unavailable|paused/.test(st))counts.blocked++;else counts.other++;}
+ const qrange=encodeURIComponent("'Questions To Answer'!A1:G1000");
+ const qr=await fetch(SHEETS_BASE+qrange,{headers:{Authorization:'Bearer '+access},signal:AbortSignal.timeout(12000)});
+ if(!qr.ok)throw Error('Question bank unavailable');
+ const questions=((await qr.json()).values||[]).slice(1).filter(r=>String(r[3]||'').trim()&&String(r[6]||'').trim().toLowerCase()!=='approved');
+ if(/question/i.test(command)){
+  if(!questions.length)return 'Lilly Jobs: No unanswered screening questions in the tracker.';
+  return 'Lilly Jobs: '+questions.length+' pending. '+questions.slice(0,3).map(r=>String(r[0])+': '+String(r[3]).slice(0,110)).join(' | ')+' Reply ANSWER <ID> <your answer> to record one.';
+ }
+ return 'Lilly Jobs tracker: '+counts.submitted+' verified submitted; '+counts.blocked+' saved/blocked; '+counts.closed+' closed; '+counts.other+' other; '+questions.length+' questions pending. Text JOBS QUESTIONS for details. These are tracker counts, not live application confirmations.';
+}
+export async function smsRecordAnswer(id,answer){
+ if(!/^Q[A-Za-z0-9-]{1,55}$/.test(id)||!answer||answer.length>500)throw Error('Invalid question ID or answer');
+ const access=await token(),range=encodeURIComponent("'Questions To Answer'!A1:G1000");
+ const res=await fetch(SHEETS_BASE+range,{headers:{Authorization:'Bearer '+access},signal:AbortSignal.timeout(12000)});
+ if(!res.ok)throw Error('Question bank unavailable');
+ const rows=(await res.json()).values||[];
+ const index=rows.findIndex((r,i)=>i>0&&String(r[0]||'').toLowerCase()===id.toLowerCase());
+ if(index<1)return 'Question ID not found. Text JOBS QUESTIONS.';
+ if(String(rows[index][6]||'').trim().toLowerCase()==='approved')return 'Question '+id+' is already approved; no changes made.';
+ const target=encodeURIComponent("'Questions To Answer'!F"+(index+1)+":G"+(index+1));
+ const write=await fetch(SHEETS_BASE+target+'?valueInputOption=RAW',{method:'PUT',headers:{Authorization:'Bearer '+access,'Content-Type':'application/json'},body:JSON.stringify({values:[[answer,'Approved']]}),signal:AbortSignal.timeout(12000)});
+ if(!write.ok)throw Error('Unable to save answer');
+ return 'Lilly Jobs: Answer saved and approved for '+id+'. The job worker can reuse it during its next processing attempt.';
+}
