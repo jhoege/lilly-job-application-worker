@@ -81,14 +81,16 @@
     {
       "linkedinJobId": "4470470211",
       "url": "https://www.linkedin.com/jobs/view/4470470211/",
-      "status": "inspected_needs_application_review",
+      "status": "submitted_verified",
       "company": "Grove Point Marinas",
       "title": "Director of Operations",
       "easyApply": true,
       "salary": null,
-      "submitted": false,
+      "submitted": true,
       "salaryRequest": null,
-      "workArrangement": "remote"
+      "workArrangement": "remote",
+      "confirmation": "LinkedIn successful submission screenshot provided 2026-10-07",
+      "screeningAnswersReviewed": true
     },
     {
       "linkedinJobId": "4474958471",
