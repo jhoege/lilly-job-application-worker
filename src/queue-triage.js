@@ -295,7 +295,10 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
        const answer=lookupAnswer(f.label,approved,advertisedSalary);
        // Only fill clearly labeled text-like fields. No guessed dropdown, radio, checkbox, file or identity answers.
        if(answer!==undefined&&f.label){
-        await fieldsOnPage(page);
+        const currentFields=await fieldsOnPage(page);
+        const currentField=currentFields?.find(x=>x.index===f.index&&x.label===f.label);
+        if(currentField?.filled&&!salaryField)continue;
+        if(currentField)f.name=currentField.name;
         let input=page.locator(FORM_SELECTOR+' [data-lilly-field="'+f.index+'"]');
         try{
          if(['text','email','tel','number','textarea'].includes(f.type)){
@@ -314,9 +317,9 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
           }));
           const selected=names.findIndex(x=>x.name===f.name&&(normalize(x.value)===wanted||normalize(x.label)===wanted));
           if(selected<0)throw Error('No exact approved radio choice');
-          await checkNativeChoice(page,group.nth(selected));
+          await checkNativeChoice(page,group.nth(selected),f.label);
          }else if(f.type==='checkbox'&&/indicate all shifts/i.test(f.label)&&/^I am open to any required hours and shifts/i.test(answer)){
-          await checkNativeChoice(page,input);
+          await checkNativeChoice(page,input,f.label);
          }else if(f.tag==='select'){
           const choices=await input.evaluate(n=>[...(n.options||[])].map(o=>({label:o.textContent,value:o.value})),null,{timeout:1200});
           const choice=choices.find(o=>normalize(o.label)===normalize(answer)||normalize(o.value)===normalize(answer))||(/salary|compensation|pay/i.test(f.label)&&Number(answer)>0?salaryChoice(choices,Number(answer)):null);
@@ -436,7 +439,7 @@ async function advanceForm(page,button){
  await page.waitForTimeout(700);return changed;
 }
 
-async function checkNativeChoice(page,input){
+async function checkNativeChoice(page,input,question){
  if(await input.evaluate(n=>n.checked||n.closest('[role=radio],[role=checkbox]')?.getAttribute('aria-checked')==='true',null,{timeout:1500}))return;
  const meta=await input.evaluate(n=>{
   const key=n.id||'choice-'+Math.random().toString(36).slice(2);
@@ -462,6 +465,26 @@ async function checkNativeChoice(page,input){
  }
  if(!clicked&&meta.wrapper){await page.locator(FORM_SELECTOR+' [data-lilly-choice-for='+JSON.stringify(meta.key)+']').click({timeout:4000});clicked=true;}
  if(!clicked)await input.check({timeout:2500});
- const checked=await page.waitForFunction(id=>{const n=document.getElementById(id);return n&&(n.checked||n.closest('[role=radio],[role=checkbox]')?.getAttribute('aria-checked')==='true');},meta.id,{timeout:2500}).then(()=>true).catch(()=>false);
+ const checked=await page.waitForFunction(({text,question})=>{
+  const norm=s=>String(s||'').replace(/\s+/g,' ').replace(/\s*\*/g,'').trim();
+  const d=document.querySelector('[data-lilly-application="true"]')||document.querySelector('dialog[open]');
+  if(!d)return false;
+  return [...d.querySelectorAll('input[type=radio],input[type=checkbox]')].some(n=>{
+   const role=n.closest('[role=radio],[role=checkbox]');
+   if(!(n.checked||role?.getAttribute('aria-checked')==='true'))return false;
+   let choice='';
+   for(let a=n.parentElement;a&&a!==d;a=a.parentElement){
+    const peers=[...a.querySelectorAll('input')].filter(x=>x.type===n.type&&(n.type==='checkbox'||x.name===n.name));
+    if(peers.length>1)break;
+    const value=norm(a.innerText);if(value&&!choice)choice=value;
+   }
+   if(choice!==norm(text))return false;
+   for(let a=n.parentElement;a&&a!==d;a=a.parentElement){
+    const peers=[...a.querySelectorAll('input')].filter(x=>x.type===n.type&&(n.type==='checkbox'||x.name===n.name));
+    if(peers.length>1&&norm(a.innerText).includes(norm(question)))return true;
+   }
+   return false;
+  });
+ },{text:meta.text,question},{timeout:3000}).then(()=>true).catch(()=>false);
  if(!checked){meta.after=await page.evaluate(id=>{const n=document.getElementById(id);return n?{checked:n.checked,role:n.closest('[role=radio],[role=checkbox]')?.outerHTML?.slice(0,2000)}:null;},meta.id);const error=Error('Approved visible '+meta.text+' choice did not select its control');error.nativeChoice=meta;throw error;}
 }

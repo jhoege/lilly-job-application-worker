@@ -59,7 +59,7 @@ test('gateway forwards MessageSid, routes natural language before unrelated keyw
  assert.equal(await fn('Find VP of Operations jobs with billing tasks','SM12345678'),'worker response');
  assert.deepEqual(calls[0],['Find VP of Operations jobs with billing tasks','SM12345678']);
  assert.equal(await fn('ANSWER Qabc-1 Yes, I can','SM99999999'),'worker response');
- assert.match(await fn('calendar','SM22222222'),/not available yet/);
+ assert.equal(await fn('calendar','SM22222222'),'worker response');
  assert.match(await fn('email','SM22222222'),/not available yet/);
 });
 test('worker acknowledges real retries, deduplicates inbound requests, persists results and reports delivery failure',async()=>{
@@ -86,7 +86,7 @@ test('worker acknowledges real retries, deduplicates inbound requests, persists 
 test('/help lists every active route and identifies disconnected capabilities',()=>{
  assert.equal(parseCommand('/help').kind,'help');
  assert.equal(parseCommand('Lilly /help').kind,'help');
- const off=helpText({});assert.match(off,/Email, calendar and briefing: not connected/);
+ const off=helpText({});assert.match(off,/Email and briefing: not connected/);
  const on=helpText({JOB_WORKER_URL:'https://worker',JOB_ALERT_SHARED_SECRET:'test',LILLY_TASK_SPREADSHEET_ID:'sheet',GOOGLE_SERVICE_ACCOUNT_JSON:'{}',PERSONAL_ASSISTANT_URL:'https://bridge',PERSONAL_ASSISTANT_SECRET:'test'});
  for(const text of ['JOB SEARCH','JOBS APPLY','JOBS STATUS','JOBS DETAILS','JOBS QUESTIONS','ANSWER','TASKS','DUE TODAY','PAST DUE','CALENDAR','EMAIL','BRIEFING','STATUS'])assert.ok(on.includes(text));
  assert.ok(on.length<1500);

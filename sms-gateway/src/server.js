@@ -165,6 +165,7 @@ async function routeMessage(body,requestId) {
   const cmd=parseCommand(body);
   if(isJobCommand(cmd))return jobsCommand(String(body||''),requestId);
   if(cmd.kind==='help')return helpText(process.env);
+  if(cmd.kind==='calendar')return jobsCommand(String(body||''),requestId);
   if(cmd.kind==='status')return 'Lilly SMS is online. Jobs worker '+(process.env.JOB_WORKER_URL&&process.env.JOB_ALERT_SHARED_SECRET?'configured':'not configured')+'. Calendar/email bridge '+(process.env.PERSONAL_ASSISTANT_URL&&process.env.PERSONAL_ASSISTANT_SECRET?'configured':'not connected')+'. JOBS STATUS checks processing.';
   if(cmd.kind==='hello'||cmd.kind==='hi')return 'Hello. Text HELP for available commands.';
   if(cmd.kind==='past_due')return summarizeTasks(await fetchTasks(),'past-due');

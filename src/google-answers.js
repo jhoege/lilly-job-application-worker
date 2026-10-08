@@ -24,6 +24,7 @@ async function token(scope=SCOPE){
  const body=await response.json();
  return body.access_token;
 }
+export async function serviceCalendarToken(){return token('https://www.googleapis.com/auth/calendar.readonly');}
 export async function serviceDriveToken(){return token('https://www.googleapis.com/auth/drive.readonly');}
 const SEARCH_SHEET='1ksa_XvJIOR0oa-NW7LFxjBY7Ax29bnGX4jVVHCco66g';
 export async function readSearchLedger(){

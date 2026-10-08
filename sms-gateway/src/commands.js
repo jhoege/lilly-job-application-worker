@@ -27,7 +27,7 @@ export function parseCommand(body) {
  }
  if(/^\/?help$/i.test(text))return {kind:'help'};
  if(/^(?:status|hello|hi)$/i.test(text))return {kind:n};
- if(/\b(calendar|schedule|appointments?)\b/i.test(text))return {kind:'calendar',text};
+ if(/\b(calendar|schedule|appointments?|meetings?)\b|\b(address|location)\s+(of|for|with)\b/i.test(text))return {kind:'calendar',text};
  if(/\b(email|emails|inbox|mail)\b/i.test(text))return {kind:'email',text};
  if(/\b(morning briefing|briefing)\b/i.test(text))return {kind:'briefing',text};
  if(/\bpast due\b/i.test(text))return {kind:'past_due'};
@@ -48,8 +48,10 @@ export function helpText(env={}){
  else lines.push('Job search/applications: not connected');
  if(tasks)lines.push('TASKS: open task list','DUE TODAY: tasks due today','PAST DUE: overdue tasks');
  else lines.push('Task lists: not connected');
- if(assistant)lines.push('CALENDAR: ask about appointments/schedule','EMAIL or INBOX: ask about email','BRIEFING: request a personal briefing');
- else lines.push('Email, calendar and briefing: not connected to SMS yet');
+ if(!jobs)lines.push('Calendar: not connected');
+ if(jobs)lines.push('CALENDAR: ask about meeting times, locations or addresses; Google connection required, Outlook pending');
+ if(assistant)lines.push('EMAIL or INBOX: ask about email','BRIEFING: request a personal briefing');
+ else lines.push('Email and briefing: not connected to SMS yet');
  lines.push('Bills: not connected','HI or HELLO: greeting','Natural job-search requests also work. Salary: 75% into posted/comparable range, minimum $120,000.');
  return lines.join('\n');
 }
