@@ -201,7 +201,16 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       '[role="button"][aria-label*="Easy Apply" i]'
      ];
      let easy=null;
+     // A saved Easy Apply draft replaces the initial button with Continue.
+     // Only resume that control when the current job explicitly identifies a saved application.
+     if(/last modified this application|saved this application/i.test(currentJobStatus)){
+      for(const role of ['button','link']){
+       const candidate=page.getByRole(role,{name:/^Continue(?: application)?$/i}).first();
+       if(await candidate.isVisible().catch(()=>false)){easy=candidate;break;}
+      }
+     }
      for(const selector of selectors){
+      if(easy)break;
       const candidate=page.locator(selector).first();
       if(await candidate.waitFor({state:"visible",timeout:2000}).then(()=>true).catch(()=>false)){
        const label=((await candidate.innerText().catch(()=>''))+' '+(await candidate.getAttribute('aria-label').catch(()=>''))).trim();

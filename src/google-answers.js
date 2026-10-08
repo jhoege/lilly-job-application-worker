@@ -24,6 +24,23 @@ async function token(){
  const body=await response.json();
  return body.access_token;
 }
+const SEARCH_SHEET='1ksa_XvJIOR0oa-NW7LFxjBY7Ax29bnGX4jVVHCco66g';
+export async function readSearchLedger(){
+ const access=await token();
+ const r=await fetch('https://sheets.googleapis.com/v4/spreadsheets/'+SEARCH_SHEET+'/values/'+encodeURIComponent("'Job Search'!A1:R2000"),{headers:{Authorization:'Bearer '+access},signal:AbortSignal.timeout(12000)});
+ if(!r.ok)throw Error('Job Search read failed HTTP '+r.status);
+ return (await r.json()).values||[];
+}
+export async function recordSearchAttempt(url,status,reason){
+ const rows=await readSearchLedger(),index=rows.findIndex((r,i)=>i>0&&r[11]===url);
+ if(index<1)throw Error('Job Search row no longer found');
+ const old=rows[index];
+ if(/applied|submitted|interview|excluded|closed|reject/i.test(old[16]||''))return {updated:false,reason:'protected_status'};
+ const access=await token(),note=(old[17]||'')+'\nBatch attempt '+new Date().toISOString()+': '+reason;
+ const r=await fetch('https://sheets.googleapis.com/v4/spreadsheets/'+SEARCH_SHEET+'/values/'+encodeURIComponent("'Job Search'!Q"+(index+1)+':R'+(index+1))+'?valueInputOption=RAW',{method:'PUT',headers:{Authorization:'Bearer '+access,'Content-Type':'application/json'},body:JSON.stringify({values:[[status,note]]}),signal:AbortSignal.timeout(12000)});
+ if(!r.ok)throw Error('Job Search outcome write failed HTTP '+r.status);
+ return {updated:true};
+}
 export async function readApprovedAnswers(){
  const access=await token();
  const range=encodeURIComponent("'Approved Answers'!A1:F500");
@@ -196,3 +213,4 @@ export async function setPostingArchive(jobId,{url,status,archivedAt}){
  if(!res.ok)throw Error('Archive tracker update HTTP '+res.status);
  return true;
 }
+

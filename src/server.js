@@ -9,6 +9,7 @@ import { startAutoTriage,runAutoTriage } from './auto-triage.js';
 import { handleSmsCommand } from './sms-operations.js';
 import {archivePosting} from './posting-archive.js';
 import {driveOAuth} from './drive-oauth.js';
+import {processSearchBatch} from './search-batch.js';
 
 const app = express();
 app.get('/integrations/google-drive/callback', driveOAuth.callback);
@@ -96,6 +97,23 @@ async function initializeBrowser() {
         catch(e){result={started:false,error:String(e.message).slice(0,160)};}
         fs.writeFileSync(record,JSON.stringify({...result,finishedAt:new Date().toISOString()}),{mode:0o600});
         console.log('[application-batch] '+JSON.stringify(result));
+      })();
+    }
+    const searchBatchVersion=process.env.SEARCH_BATCH_VERSION||'';
+    if(/^search-\d{8}-v\d+$/.test(searchBatchVersion)){
+      const record='/data/'+searchBatchVersion+'-result.json';
+      if(!fs.existsSync(record))void (async()=>{
+        let result;
+        try{
+          const primaryPath='/data/'+batchVersion+'-result.json';
+          const deadline=Date.now()+12*60*1000;
+          while(!fs.existsSync(primaryPath)&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,1500));
+          if(!fs.existsSync(primaryPath))throw Error('Primary application batch must finish before search tracker batch');
+          const primary=JSON.parse(fs.readFileSync(primaryPath,'utf8'));
+          result={results:await processSearchBatch(browserContext,primary.results||[])};
+        }catch(e){result={error:String(e.message).slice(0,160)};}
+        fs.writeFileSync(record,JSON.stringify({...result,finishedAt:new Date().toISOString()}),{mode:0o600});
+        console.log('[search-batch] '+JSON.stringify(result));
       })();
     }
     if(/^fulltext-v\d+$/.test(process.env.ARCHIVE_CAPTURE_VERIFY_VERSION||'')){
