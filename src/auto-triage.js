@@ -62,6 +62,6 @@ export function startAutoTriage(getContext){
   }catch(e){console.error('[auto-triage] '+String(e.message).slice(0,150))}
   finally{busy=false}
  };
- setTimeout(()=>{void run()},120000).unref();
+ setTimeout(()=>{void run()},15000).unref();
  setInterval(()=>{void run()},60*60*1000).unref();
 }
