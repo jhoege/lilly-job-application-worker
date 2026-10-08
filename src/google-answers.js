@@ -31,7 +31,22 @@ export async function readApprovedAnswers(){
  if(!response.ok){const body=await response.json().catch(()=>({}));const reason=body.error?.errors?.[0]?.reason||body.error?.status||'unknown';const msg=String(body.error?.message||'').replace(/[\\r\\n]/g,' ').slice(0,180);throw Error('Google Sheets read failed: HTTP '+response.status+'; reason='+reason+'; detail='+msg);}
  const data=await response.json();
  const rows=(data.values||[]).slice(1);
- return rows.filter(row=>String(row[4]||'').trim().toLowerCase()==='approved').map(row=>({id:row[0],category:row[1],question:row[2],answer:row[3]}));
+ const approved=rows.filter(row=>String(row[4]||'').trim().toLowerCase()==='approved').map(row=>({id:row[0],category:row[1],question:row[2],answer:row[3]}));
+ // User approvals in Questions To Answer are authoritative immediately;
+ // no manual copying into Approved Answers is required.
+ const qrange=encodeURIComponent("'Questions To Answer'!A1:G1000");
+ const qresponse=await fetch('https://sheets.googleapis.com/v4/spreadsheets/'+SHEET_ID+'/values/'+qrange,{headers:{Authorization:'Bearer '+access},signal:AbortSignal.timeout(12000)});
+ if(!qresponse.ok)throw Error('Approved question bank read failed HTTP '+qresponse.status);
+ const qrows=((await qresponse.json()).values||[]).slice(1);
+ const norm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+ const byQuestion=new Map(approved.map(x=>[norm(x.question),x]));
+ for(const row of qrows){
+  if(String(row[6]||'').trim().toLowerCase()!=='approved')continue;
+  const question=String(row[3]||'').trim(),answer=String(row[5]||'').trim();
+  if(!question||!answer)continue;
+  byQuestion.set(norm(question),{id:row[0],category:'Screening',question,answer});
+ }
+ return [...byQuestion.values()];
 }
 export async function checkAnswerConnector(){
  const rows=await readApprovedAnswers();
