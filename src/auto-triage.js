@@ -8,7 +8,7 @@ import {getTriageStatus,triageQueue} from './queue-triage.js';
 const statePath=process.env.TRIAGE_STATE_FILE||'/data/job-triage-state.json';
 let busy=false;
 const engineVersion='2026-10-08-sms-repair-v8';
-import {verifiedSubmission,uncertainSubmission,excludedEmployer} from './job-policy.js';
+import {verifiedSubmission,uncertainSubmission,excludedEmployer,excludedApplication} from './job-policy.js';
 export async function runAutoTriage(context,{force=false}={}){
   if(busy||getTriageStatus().running)return {started:false,reason:'already_running'};
   if(!context)throw Error('Browser unavailable');
@@ -28,7 +28,7 @@ export async function runAutoTriage(context,{force=false}={}){
    const submittedIds=new Set(ledger.filter(x=>verifiedSubmission(x.status)).map(x=>x.id));
    const jobsById=new Map(original.map(j=>[j.id,j]));
    for(const entry of ledger){
-    if(!verifiedSubmission(entry.status)&&!uncertainSubmission(entry.status)&&!/closed/i.test(entry.status)&&entry.url&&/^https:\/\/www\.linkedin\.com\/jobs\/view\/\d{8,12}\/?$/.test(entry.url)&&!jobsById.has(entry.id))jobsById.set(entry.id,{...entry,submitted:false});
+    if(!verifiedSubmission(entry.status)&&!uncertainSubmission(entry.status)&&!excludedApplication(entry.status)&&entry.url&&/^https:\/\/www\.linkedin\.com\/jobs\/view\/\d{8,12}\/?$/.test(entry.url)&&!jobsById.has(entry.id))jobsById.set(entry.id,{...entry,submitted:false});
    }
    for(const job of saved.jobs){
     if(submittedIds.has(job.id))continue;
@@ -38,7 +38,7 @@ export async function runAutoTriage(context,{force=false}={}){
      catch(e){console.error('[saved-jobs] could not queue '+job.id+': '+String(e.message).slice(0,100))}
     }
    }
-   const jobs=[...jobsById.values()].filter(j=>!submittedIds.has(j.id)&&!uncertainSubmission(ledger.find(x=>x.id===j.id)?.status)&&!excludedEmployer(j.company)&&!/closed/i.test(ledger.find(x=>x.id===j.id)?.status||''));
+   const jobs=[...jobsById.values()].filter(j=>!submittedIds.has(j.id)&&!uncertainSubmission(ledger.find(x=>x.id===j.id)?.status)&&!excludedEmployer(j.company)&&!excludedApplication(ledger.find(x=>x.id===j.id)?.status));
    // Revisit blocked jobs as soon as approved answers change; otherwise limit retries.
    const eligible=jobs.filter(j=>{
     const entry=state[j.id];
@@ -81,4 +81,5 @@ export function startAutoTriage(getContext){
  setTimeout(()=>{void run()},15000).unref();
  setInterval(()=>{void run()},60*60*1000).unref();
 }
+
 

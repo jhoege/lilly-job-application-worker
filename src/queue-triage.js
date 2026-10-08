@@ -1,6 +1,6 @@
 import {getQueue,salaryRequest} from './application-support.js';
-import {readApprovedAnswers,appendUnknownQuestions,readSubmittedJobIds,logVerifiedLinkedInApplication,upsertApplicationStatus} from './google-answers.js';
-import {excludedEmployer} from './job-policy.js';
+import {readApprovedAnswers,appendUnknownQuestions,readSubmittedJobIds,readApplicationLedger,logVerifiedLinkedInApplication,upsertApplicationStatus} from './google-answers.js';
+import {excludedEmployer,excludedApplication} from './job-policy.js';
 import {archivePosting} from './posting-archive.js';
 let running=false;
 let cancelRequested=false;
@@ -147,7 +147,8 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
  progress={running:true,processed:0,total:0,currentJob:null,stage:'loading_answers',stageSince:new Date().toISOString(),startedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),lastResult:null,results:[]};
  try{
   setStage('loading_answer_database');
-  const [approved,submittedIds]=await Promise.all([readApprovedAnswers(),readSubmittedJobIds()]);
+  const [approved,submittedIds,ledger]=await Promise.all([readApprovedAnswers(),readSubmittedJobIds(),readApplicationLedger()]);
+  const excludedIds=new Set(ledger.filter(j=>excludedApplication(j.status)).map(j=>j.id));
   const jobs=(Array.isArray(jobsOverride)?jobsOverride:getQueue()).filter(x=>!x.submitted&&x.status!=='closed_not_accepting_applications'&&(!Array.isArray(ids)||ids.includes(x.id))).slice(Math.max(0,Number(offset)||0),Math.max(0,Number(offset)||0)+Math.max(1,Math.min(10,Number(limit)||5)));
   progress.total=jobs.length;
   try{
@@ -156,6 +157,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
     progress.currentJob=job.id;
     setStage('checking_submission_history');
     if(submittedIds.has(job.id)){const result={jobId:job.id,status:'skipped_already_logged',visited:false};results.push(result);recordResult(result);continue;}
+    if(excludedIds.has(job.id)){const result={jobId:job.id,status:'skipped_excluded',visited:false};results.push(result);recordResult(result);continue;}
     let stage='navigation';
     let page=null;
     let watchdog=null;
@@ -182,7 +184,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       submittedIds.add(job.id);
       results.push({jobId:job.id,status:'already_applied_logged',logged:logged.added});continue;
      }
-     const advertisedSalary=advertisedSalaryFromText(currentJobStatus)??(Number(job.salaryRequest)>=120000?Number(job.salaryRequest):120000);
+     const advertisedSalary=advertisedSalaryFromText(currentJobStatus)??(Number(job.salaryRequest)>=120000?Number(job.salaryRequest):null);
      setStage('archiving_job_posting');
      const archive=await archivePosting(page,job);
      if(!archive.ok){
@@ -369,4 +371,5 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
   return {mode:process.env.AUTO_SUBMIT_ENABLED==='true'&&process.env.TEST_MODE==='false'?'guarded_submission':'safe_multistep_triage',submitted:results.filter(x=>x.submitted).length,results};
  }finally{running=false;progress.running=false;progress.currentJob=null;setStage(cancelRequested?'cancelled':'finished')}
 }
+
 
