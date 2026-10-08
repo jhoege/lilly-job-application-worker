@@ -1,6 +1,7 @@
 import {getQueue,salaryRequest} from './application-support.js';
 import {readApprovedAnswers,appendUnknownQuestions,readSubmittedJobIds,logVerifiedLinkedInApplication,upsertApplicationStatus} from './google-answers.js';
 import {excludedEmployer} from './job-policy.js';
+import {archivePosting} from './posting-archive.js';
 let running=false;
 let cancelRequested=false;
 let activePage=null;
@@ -182,6 +183,12 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       results.push({jobId:job.id,status:'already_applied_logged',logged:logged.added});continue;
      }
      const advertisedSalary=advertisedSalaryFromText(currentJobStatus)??(Number(job.salaryRequest)>=120000?Number(job.salaryRequest):120000);
+     setStage('archiving_job_posting');
+     const archive=await archivePosting(page,job);
+     if(!archive.ok){
+      results.push({jobId:job.id,status:'needs_manual_review',reason:'Posting PDF archive failed: '+archive.reason});
+      continue;
+     }
      setStage('finding_easy_apply');
      // LinkedIn uses both native buttons and custom aria-labels for Easy Apply.
      // Inspect multiple grounded controls; do not infer availability from an incomplete load.
