@@ -5,6 +5,7 @@ import { mountAuthBrowser } from './auth-browser.js';
 import { checkAnswerConnector } from './google-answers.js';
 import { startQuestionAlerts } from './question-alerts.js';
 import { startAutoTriage } from './auto-triage.js';
+import { startOneTimeCalendarTest } from './calendar-test-once.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -69,6 +70,7 @@ const server = app.listen(port, '0.0.0.0', () => {
   void initializeBrowser();
   startQuestionAlerts();
   startAutoTriage(() => browserContext);
+  startOneTimeCalendarTest();
 });
 
 async function shutdown(signal) {
