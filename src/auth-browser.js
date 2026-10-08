@@ -105,7 +105,20 @@ export function mountAuthBrowser(app, getContext, checkAnswerConnector) {
   router.post('/open',authorized,async(_req,res)=>{try{const p=await page();await p.goto('https://www.linkedin.com/login',{waitUntil:'domcontentloaded',timeout:20000});res.json({ok:true})}catch{res.sendStatus(503)}});
   router.get('/queue',authorized,async(_req,res)=>{try{const submitted=await readSubmittedJobIds();res.json({jobs:loadCandidateQueue().filter(j=>!submitted.has(j.id))})}catch(e){res.status(503).json({error:'Application ledger unavailable; refusing to expose unverified queue'})}});
   router.post('/inspect',authorized,async(req,res)=>{try{const submitted=await readSubmittedJobIds();if(submitted.has(String(req.body.id)))return res.status(409).json({error:'Already applied and logged; inspection blocked'});const result=await inspectCandidate(getContext(),req.body.id);res.json(result)}catch(e){res.status(422).json({error:'Job inspection failed; check LinkedIn session and job availability'})}});
-  router.post('/pendingcheck',authorized,async(_req,res)=>{try{res.json({pendingQuestions:await pendingQuestionCount(),smsConfigured:!!(process.env.JOB_SMS_GATEWAY_URL&&process.env.JOB_ALERT_SHARED_SECRET)})}catch(e){res.status(503).json({error:String(e.message).slice(0,140)})}});
+  router.post('/pendingcheck',authorized,async(_req,res)=>{
+   try{
+    const count=await pendingQuestionCount();
+    let sms={ready:false,missing:['gateway configuration']};
+    if(process.env.JOB_SMS_GATEWAY_URL&&process.env.JOB_ALERT_SHARED_SECRET){
+     try{
+      const url=new URL('/internal/job-alert-status',process.env.JOB_SMS_GATEWAY_URL);
+      const r=await fetch(url,{headers:{Authorization:'Bearer '+process.env.JOB_ALERT_SHARED_SECRET},signal:AbortSignal.timeout(8000)});
+      sms=r.ok?await r.json():{ready:false,missing:['gateway unavailable: HTTP '+r.status]};
+     }catch{sms={ready:false,missing:['gateway connection failed']}}
+    }
+    res.json({pendingQuestions:count,smsReady:!!sms.ready,smsMissing:sms.missing||[]});
+   }catch(e){res.status(503).json({error:String(e.message).slice(0,140)})}
+  });
   router.post('/googlecheck',authorized,async(_req,res)=>{try{res.json(await checkAnswerConnector())}catch(e){res.status(503).json({connected:false,error:String(e.message).slice(0,140)})}});
   router.post('/triage',authorized,(req,res)=>{try{res.json(startTriage(getContext(),{limit:req.body.limit}))}catch(e){res.status(503).json({error:String(e.message).slice(0,140)})}});
   router.get('/triage/status',authorized,(_req,res)=>res.json(getTriageStatus()));
