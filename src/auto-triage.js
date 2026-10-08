@@ -14,8 +14,8 @@ export function startAutoTriage(getContext){
    const jobs=getQueue().filter(j=>!j.submitted&&j.status!=='closed_not_accepting_applications');
    const eligible=jobs.filter(j=>!state[j.id]||Date.now()-state[j.id]>24*60*60*1000);
    if(!eligible.length)return;
-   const offset=jobs.findIndex(j=>j.id===eligible[0].id);
-   const result=await triageQueue(getContext(),{limit:5,offset});
+   const ids=eligible.slice(0,5).map(j=>j.id);
+   const result=await triageQueue(getContext(),{limit:5,ids});
    for(const item of result.results||[]){
     if(item.jobId)state[item.jobId]=Date.now();
    }
