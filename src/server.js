@@ -2,6 +2,7 @@ import express from 'express';
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import { mountAuthBrowser } from './auth-browser.js';
+import { checkAnswerConnector } from './google-answers.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -32,6 +33,8 @@ app.get('/ready', (_req, res) => {
   res.status(browserReady ? 200 : 503).json(body);
 });
 
+app.get('/integrations/google-answers/status', async (_req,res) => {res.status(404).json({error:'Use authenticated browser interface for connector diagnostics'});});
+
 app.get('/', (_req, res) => {
   res.status(200).json({
     service: 'Lilly Job Application Worker',
@@ -57,7 +60,7 @@ async function initializeBrowser() {
   }
 }
 
-mountAuthBrowser(app, () => browserContext);
+mountAuthBrowser(app, () => browserContext, checkAnswerConnector);
 
 const server = app.listen(port, '0.0.0.0', () => {
   console.log(`[server] listening on ${port}`);
