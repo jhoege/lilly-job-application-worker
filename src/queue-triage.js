@@ -1,5 +1,5 @@
 import {getQueue,salaryRequest} from './application-support.js';
-import {readApprovedAnswers,appendUnknownQuestions,readSubmittedJobIds,logVerifiedLinkedInApplication} from './google-answers.js';
+import {readApprovedAnswers,appendUnknownQuestions,readSubmittedJobIds,logVerifiedLinkedInApplication,upsertApplicationStatus} from './google-answers.js';
 let running=false;
 let cancelRequested=false;
 let activePage=null;
@@ -76,7 +76,39 @@ async function fieldsOnPage(page){
   });
  });
 }
-export async function triageQueue(context,{limit=5,offset=0,ids=null}={}){
+async function saveDraftIfSupported(page){
+ const dialog=page.locator('[role="dialog"]').first();
+ try{
+  const save=dialog.getByRole('button',{name:/^save( application| draft)?$/i}).first();
+  if(await save.isVisible({timeout:800}).catch(()=>false)){
+   await save.click({timeout:3000});
+   return {saved:true,reason:'LinkedIn Save action clicked'};
+  }
+  const dismiss=dialog.locator('button[aria-label*="dismiss" i],button[aria-label*="close" i]').first();
+  if(await dismiss.isVisible({timeout:800}).catch(()=>false)){
+   await dismiss.click({timeout:3000});
+   const confirmation=page.getByRole('dialog').getByRole('button',{name:/^save( application| draft)?$/i}).last();
+   if(await confirmation.isVisible({timeout:1800}).catch(()=>false)){
+    await confirmation.click({timeout:3000});
+    return {saved:true,reason:'LinkedIn Save draft confirmation clicked'};
+   }
+  }
+ }catch(e){return {saved:false,reason:'Save attempt failed: '+String(e.message).slice(0,90)}}
+ return {saved:false,reason:'No supported LinkedIn Save draft control'};
+}
+const displayStatus={
+ needs_answers:'Needs answers',ready_for_review:'Ready for review',
+ needs_manual_review:'Needs review',submission_blocked:'Submission blocked',
+ submission_unverified:'Submission unverified - Verify before retry',
+ technical_failure:'Technical error',job_timeout:'Timed out',
+ login_required:'Login required',closed:'Closed',
+ external_application:'External application required',
+ easy_apply_not_detected:'Easy Apply unavailable',
+ form_unavailable:'Form unavailable',no_easy_apply:'Easy Apply unavailable',
+ already_applied_logged:'Submitted verified',submitted_verified:'Submitted verified',
+ cancelled:'Cancelled',requires_review:'Needs review'
+};
+export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverride=null}={}){
  if(running)throw Error('A triage run is already active');
  if(!context)throw Error('Browser unavailable');
  running=true;
@@ -86,7 +118,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null}={}){
  try{
   setStage('loading_answer_database');
   const [approved,submittedIds]=await Promise.all([readApprovedAnswers(),readSubmittedJobIds()]);
-  const jobs=getQueue().filter(x=>!x.submitted&&x.status!=='closed_not_accepting_applications'&&(!Array.isArray(ids)||ids.includes(x.id))).slice(Math.max(0,Number(offset)||0),Math.max(0,Number(offset)||0)+Math.max(1,Math.min(10,Number(limit)||5)));
+  const jobs=(Array.isArray(jobsOverride)?jobsOverride:getQueue()).filter(x=>!x.submitted&&x.status!=='closed_not_accepting_applications'&&(!Array.isArray(ids)||ids.includes(x.id))).slice(Math.max(0,Number(offset)||0),Math.max(0,Number(offset)||0)+Math.max(1,Math.min(10,Number(limit)||5)));
   progress.total=jobs.length;
   try{
    for(const job of jobs){
@@ -230,7 +262,12 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null}={}){
      }
      let added=0;
      if(unknown.length){setStage('saving_questions_to_sheet');added=(await appendUnknownQuestions(unknown.map(question=>({jobId:job.id,platform:'LinkedIn',question,url:job.url,employer:job.company})))).added;}
-     results.push({jobId:job.id,status,stepsCompleted:steps,unknownQuestions:unknown.length,logged:added,diagnostic,submitted:status==='submitted_verified'});
+     let draft={saved:false,reason:'No draft save attempted'};
+     if(!['submitted_verified','submission_unverified'].includes(status)){
+      setStage('saving_unfinished_application');
+      draft=await saveDraftIfSupported(page);
+     }
+     results.push({jobId:job.id,status,stepsCompleted:steps,unknownQuestions:unknown.length,logged:added,diagnostic,draftSaved:draft.saved,draftNote:draft.reason,submitted:status==='submitted_verified'});
      // This triage never presses Submit. Closing this isolated page abandons the form.
     }catch(e){results.push({jobId:job.id,status:cancelRequested?'cancelled':timedOut?'job_timeout':'technical_failure',stage,reason:String(e.message).slice(0,120)})}
     finally{
@@ -238,8 +275,15 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null}={}){
      activePage=null;
      if(page)await page.close().catch(()=>{});
      const last=results[results.length-1];
-     if(last?.jobId===job.id)recordResult(last);
-     else recordResult({jobId:job.id,status:'unknown'});
+     const outcome=last?.jobId===job.id?last:{jobId:job.id,status:'unknown'};
+     if(!submittedIds.has(job.id)&&!['skipped_already_logged','submitted_verified','already_applied_logged'].includes(outcome.status)){
+      const label=displayStatus[outcome.status]||'Needs review';
+      const display=outcome.draftSaved&&['needs_answers','needs_manual_review','ready_for_review'].includes(outcome.status)?'Saved - '+label:label;
+      const reason=[outcome.diagnostic?.reason||outcome.reason||outcome.diagnostic||'',outcome.draftNote||''].filter(x=>typeof x==='string'&&x).join('; ').slice(0,450);
+      try{await upsertApplicationStatus(job,display,reason,{source:job.source})}
+      catch(e){outcome.ledgerError=String(e.message).slice(0,120);console.error('[application-ledger] job='+job.id+' '+outcome.ledgerError)}
+     }
+     recordResult(outcome);
      setStage('moving_to_next_job');
     }
    }
