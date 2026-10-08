@@ -162,7 +162,7 @@ async function jobsCommand(message){
 
 async function routeMessage(body) {
   const n = String(body || '').trim().toLowerCase();
-  if (n === 'help') return 'Commands: HELP, STATUS, TASKS, PAST DUE, DUE TODAY, CALENDAR, BILLS, JOBS, JOBS QUESTIONS, ANSWER QID text.';
+  if (n === 'help') return 'Commands: HELP, STATUS, TASKS, PAST DUE, DUE TODAY, CALENDAR, BILLS, JOBS, JOBS SEARCH <role>, JOBS QUESTIONS, ANSWER QID text.';
   if (n === 'status') return 'Lilly SMS gateway is online and your number is authorized.';
   if (n === 'hello' || n === 'hi' || n.startsWith('hello lilly')) return 'Hello. Text HELP for available commands.';
   if (n.includes('past due')) return summarizeTasks(await fetchTasks(), 'past-due');
