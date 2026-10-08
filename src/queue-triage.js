@@ -145,7 +145,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null}={}){
       const d=document.querySelector('[role="dialog"], .jobs-easy-apply-modal, .artdeco-modal');
       return !!d&&(d.querySelectorAll('input:not([type="hidden"]),select,textarea').length>0||
         [...d.querySelectorAll('button')].some(b=>/next|review|submit application|continue/i.test(b.innerText||'')));
-     },{timeout:9000}).catch(()=>{});
+     },null,{timeout:9000}).catch(()=>{});
      stage='form';
      let steps=0,unknown=[],status='requires_review',diagnostic=null;
      for(let step=0;step<6;step++){
