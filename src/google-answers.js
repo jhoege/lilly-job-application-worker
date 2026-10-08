@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import {verifiedSubmission,uncertainSubmission} from './job-policy.js';
+import {verifiedSubmission,uncertainSubmission,excludedApplication} from './job-policy.js';
 
 const SHEET_ID='1g4eUIwU1-zyZWuNyMCxradZLhtDnjBcTS34DkxUcItg';
 const TOKEN_URL='https://oauth2.googleapis.com/token';
@@ -152,7 +152,7 @@ export async function upsertApplicationStatus(job,status,reason='',extra={}){
  const rows=await ledgerRows(access);
  const index=rows.findIndex((r,i)=>i>0&&String(r[0]||'').trim()===id);
  const existing=index>0?rows[index]:null;
- if(existing&&(verifiedSubmission(existing[4])||uncertainSubmission(existing[4])&&!verifiedSubmission(status)))
+ if(existing&&(excludedApplication(existing[4])||verifiedSubmission(existing[4])||uncertainSubmission(existing[4])&&!verifiedSubmission(status)))
   return {updated:false,reason:'already_submitted'};
  const now=new Date().toISOString();
  const normalizedStatus=String(status||'Needs review').slice(0,90);

@@ -2,6 +2,7 @@ import {getQueue,salaryRequest} from './application-support.js';
 import {readApprovedAnswers,appendUnknownQuestions,readSubmittedJobIds,readApplicationLedger,logVerifiedLinkedInApplication,upsertApplicationStatus} from './google-answers.js';
 import {excludedEmployer,excludedApplication} from './job-policy.js';
 import {archivePosting} from './posting-archive.js';
+import {exportResumePacket,uploadResumePacket,verifyResumeSelection} from './resume-packet.js';
 let running=false;
 let cancelRequested=false;
 let activePage=null;
@@ -129,7 +130,7 @@ async function saveJobForLater(page,source){
  return {saved:false,reason:'No LinkedIn Save job control detected'};
 }
 const displayStatus={
- needs_answers:'Needs answers',ready_for_review:'Ready for review',
+ excluded_qualification:'Excluded - required qualification',needs_answers:'Needs answers',ready_for_review:'Ready for review',
  needs_manual_review:'Needs review',submission_blocked:'Submission blocked',
  submission_unverified:'Submission unverified - Verify before retry',
  technical_failure:'Technical error',job_timeout:'Timed out',
@@ -193,11 +194,13 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       results.push({jobId:job.id,status:'needs_manual_review',reason:'Posting PDF archive failed: '+archive.reason});
       continue;
      }
-     const resumeVersion=ledger.find(x=>x.id===job.id)?.resumeVersion||job.resumeVersion||'';
-     if(resumeVersion){
-      results.push({jobId:job.id,status:'needs_manual_review',reason:'Application specifies a resume version, but exact packet selection/upload is not implemented. No default resume substituted.'});
-      continue;
+     const postingText=await page.locator('[id^="JobDetails_AboutTheJob_"],.jobs-description__content').first().innerText().catch(()=>'');
+     if(/active top secret|top secret.{0,35}must have clearance to start/i.test(postingText)&&/not currently|^no$/i.test(lookupAnswer('Security clearance held?',approved)||'')){
+      results.push({jobId:job.id,status:'excluded_qualification',reason:'Active Top Secret clearance required; approved answer says no current clearance'});continue;
      }
+     const resumeVersion=ledger.find(x=>x.id===job.id)?.resumeVersion||job.resumeVersion||'';
+     const packet=resumeVersion?await exportResumePacket({...job,resumeVersion}):null;
+     let packetSelected=false;
      setStage('finding_easy_apply');
      // LinkedIn uses both native buttons and custom aria-labels for Easy Apply.
      // Inspect multiple grounded controls; do not infer availability from an incomplete load.
@@ -267,6 +270,11 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       const fields=await fieldsOnPage(page);
       if(!fields){status='form_unavailable';break}
       const missing=[];
+      if(packet&&!packetSelected&&await page.locator(FORM_SELECTOR+' input[type=file]').count()){
+       const uploaded=await uploadResumePacket(page,FORM_SELECTOR,packet);
+       if(!uploaded.ok){status='needs_manual_review';diagnostic={reason:uploaded.reason};break;}
+       packetSelected=true;
+      }
       setStage('matching_approved_answers');
       for(const f of fields){
        // Trust pre-filled values from the user's prior applications; never overwrite them.
@@ -293,7 +301,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       }
       if(missing.length){setStage('collecting_unanswered_questions');
        unknown=[...new Set(missing.map(x=>x.label||('Unlabeled required '+x.type+' field')))];
-       diagnostic={page:step+1,visibleFields:fields.length,unfilledRequired:missing.length,reason:'required_answers_missing'};
+       diagnostic={page:step+1,visibleFields:fields.length,unfilledRequired:missing.length,reason:'required_answers_missing',missing:missing.map(f=>({label:f.label,type:f.type})),choices:await page.locator(FORM_SELECTOR+' input[type=radio]').evaluateAll(ns=>ns.map(n=>({name:n.name,value:n.value,label:n.labels?.[0]?.innerText||''})))};
        status='needs_answers';break;
       }
       const dialog=page.locator(FORM_SELECTOR);
@@ -308,6 +316,8 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
         setStage('validating_before_submission');
         // Re-check submitted IDs immediately before submitting to avoid a stale queue.
         if((await readSubmittedJobIds()).has(job.id)){status='already_applied_logged';break}
+        if(excludedApplication((await readApplicationLedger()).find(j=>j.id===job.id)?.status)){status='skipped_excluded';break}
+        if(packet&&(!packetSelected||!await verifyResumeSelection(page,FORM_SELECTOR,packet.name))){status='submission_blocked';diagnostic={reason:'Exact approved resume selection not verified on review'};break;}
         const validation=await page.evaluate(()=>{
          const dialog=document.querySelector('[data-lilly-application="true"]');
          if(!dialog)return {invalid:1,reason:'Application dialog missing'};
@@ -334,11 +344,11 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       }
       if(await review.count()&&await review.first().isEnabled()){
        setStage('advancing_to_review');
-       await review.first().click({timeout:5000});steps++;continue;
+       if(!await advanceForm(page,review.first())){status='submission_blocked';diagnostic={...diagnostic,reason:'Review did not advance',form:await formDiagnostic(page)};break;}steps++;continue;
       }
       if(await next.count()&&await next.first().isEnabled()){
        setStage('advancing_form_page');
-       await next.first().click({timeout:5000});steps++;continue;
+       if(!await advanceForm(page,next.first())){status='submission_blocked';diagnostic={...diagnostic,reason:'Next did not advance',form:await formDiagnostic(page)};break;}steps++;continue;
       }
       // If LinkedIn disables Next/Review, capture blank fields rather than silently stalling.
       // These become exceptions for the user's approval; never guess the missing response.
@@ -372,10 +382,10 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
      if(page)await page.close().catch(()=>{});
      const last=results[results.length-1];
      const outcome=last?.jobId===job.id?last:{jobId:job.id,status:'unknown'};
-     if(!submittedIds.has(job.id)&&!['skipped_already_logged','submitted_verified','already_applied_logged'].includes(outcome.status)){
+     if(!submittedIds.has(job.id)&&!['skipped_already_logged','skipped_excluded','submitted_verified','already_applied_logged'].includes(outcome.status)){
       const label=displayStatus[outcome.status]||'Needs review';
       const display=(outcome.draftSaved||outcome.jobSaved)&&!['closed','submitted_verified','submission_unverified'].includes(outcome.status)?'Saved - '+label:label;
-      const reason=[outcome.diagnostic?.reason||outcome.reason||outcome.diagnostic||'',outcome.draftNote||'',outcome.saveNote||''].filter(x=>typeof x==='string'&&x).join('; ').slice(0,450);
+      const reason=[outcome.diagnostic?.reason||outcome.reason||outcome.diagnostic||'',outcome.diagnostic?.form?.text||'',outcome.draftNote||'',outcome.saveNote||''].filter(x=>typeof x==='string'&&x).join('; ').slice(0,450);
       try{await upsertApplicationStatus(job,display,reason,{source:job.source})}
       catch(e){outcome.ledgerError=String(e.message).slice(0,120);console.error('[application-ledger] job='+job.id+' '+outcome.ledgerError)}
      }
@@ -389,3 +399,11 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
 }
 
 
+
+async function formDiagnostic(page){return page.locator(FORM_SELECTOR).evaluate(d=>({text:(d.innerText||'').slice(0,2200),files:[...d.querySelectorAll('input[type=file]')].map(n=>({accept:n.accept,required:n.required})),radios:[...d.querySelectorAll('input[type=radio]')].map(n=>({label:n.labels?.[0]?.innerText,checked:n.checked,value:n.value}))})).catch(()=>({}));}
+async function advanceForm(page,button){
+ const before=await page.locator(FORM_SELECTOR).innerText();
+ await button.click({timeout:5000});
+ const changed=await page.waitForFunction(({selector,before})=>{const d=document.querySelector(selector);return d&&d.innerText!==before;},{selector:FORM_SELECTOR,before},{timeout:7000}).then(()=>true).catch(()=>false);
+ await page.waitForTimeout(700);return changed;
+}
