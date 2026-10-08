@@ -3,7 +3,9 @@ import {readApprovedAnswers,appendUnknownQuestions,readSubmittedJobIds} from './
 let running=false;
 let cancelRequested=false;
 let activePage=null;
-let progress={running:false,processed:0,total:0,currentJob:null,startedAt:null,updatedAt:null,lastResult:null};
+let progress={running:false,processed:0,total:0,currentJob:null,stage:'idle',stageSince:null,startedAt:null,updatedAt:null,lastResult:null,results:[]};
+function setStage(stage){progress.stage=stage;progress.stageSince=new Date().toISOString();progress.updatedAt=progress.stageSince;}
+function recordResult(result){progress.results.push(result);progress.processed++;progress.updatedAt=new Date().toISOString();}
 export function getTriageStatus(){return {...progress};}
 export async function cancelTriage(){if(!running)return {running:false};cancelRequested=true;if(activePage)await activePage.close().catch(()=>{});return {cancelRequested:true};}
 export function startTriage(context,options={}){if(running)return {started:false,reason:'already_running',progress:getTriageStatus()};void triageQueue(context,options).then(result=>{progress.lastResult=result}).catch(e=>{progress.lastResult={error:String(e.message).slice(0,180)}});return {started:true,progress:getTriageStatus()};}
@@ -45,8 +47,9 @@ export async function triageQueue(context,{limit=5,offset=0}={}){
  running=true;
  cancelRequested=false;
  const results=[];
- progress={running:true,processed:0,total:0,currentJob:null,startedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),lastResult:null};
+ progress={running:true,processed:0,total:0,currentJob:null,stage:'loading_answers',stageSince:new Date().toISOString(),startedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),lastResult:null,results:[]};
  try{
+  setStage('loading_answer_database');
   const [approved,submittedIds]=await Promise.all([readApprovedAnswers(),readSubmittedJobIds()]);
   const jobs=getQueue().filter(x=>!x.submitted&&x.status!=='closed_not_accepting_applications').slice(Math.max(0,Number(offset)||0),Math.max(0,Number(offset)||0)+Math.max(1,Math.min(10,Number(limit)||5)));
   progress.total=jobs.length;
@@ -56,17 +59,20 @@ export async function triageQueue(context,{limit=5,offset=0}={}){
    for(const job of jobs){
     if(cancelRequested)break;
     progress.currentJob=job.id;
-    progress.updatedAt=new Date().toISOString();
-    if(submittedIds.has(job.id)){results.push({jobId:job.id,status:'skipped_already_logged',visited:false});continue;}
+    setStage('checking_submission_history');
+    if(submittedIds.has(job.id)){const result={jobId:job.id,status:'skipped_already_logged',visited:false};results.push(result);recordResult(result);continue;}
     let stage='navigation';
     try{
+     setStage('opening_job');
      await page.goto(job.url,{waitUntil:'domcontentloaded',timeout:25000});
      await page.locator('h1').first().waitFor({state:'visible',timeout:9000}).catch(()=>{});
      await page.waitForTimeout(1200);
+     setStage('checking_linkedin_application_status');
      const currentJobStatus=await page.locator('main').first().innerText({timeout:4000}).catch(()=>'');
      if(/application status[\\s\\S]{0,100}application submitted/i.test(currentJobStatus)){
       results.push({jobId:job.id,status:'already_applied'});continue;
      }
+     setStage('finding_easy_apply');
      // LinkedIn uses both native buttons and custom aria-labels for Easy Apply.
      // Inspect multiple grounded controls; do not infer availability from an incomplete load.
      const selectors=[
@@ -86,14 +92,17 @@ export async function triageQueue(context,{limit=5,offset=0}={}){
       const status=login?'login_required':/no longer accepting applications/i.test(text)?'closed':/apply on company website|apply externally/i.test(text)?'external_application':'easy_apply_not_detected';
       results.push({jobId:job.id,status,diagnostic:'No visible Easy Apply control after page loaded'});continue;
      }
+     setStage('opening_application');
      await easy.click({timeout:8000});
      await page.locator('[role="dialog"]').first().waitFor({state:'visible',timeout:8000}).catch(()=>{});
      stage='form';
      let steps=0,unknown=[],status='requires_review';
      for(let step=0;step<6;step++){
+      setStage('reading_form_page_'+(step+1));
       const fields=await fieldsOnPage(page);
       if(!fields){status='form_unavailable';break}
       const missing=[];
+      setStage('matching_approved_answers');
       for(const f of fields){
        // Trust pre-filled values from the user's prior applications; never overwrite them.
        if(!f.required||f.filled)continue;
@@ -104,7 +113,7 @@ export async function triageQueue(context,{limit=5,offset=0}={}){
         try{await input.fill(String(answer),{timeout:2500})}catch{missing.push(f)}
        }else missing.push(f);
       }
-      if(missing.length){
+      if(missing.length){setStage('collecting_unanswered_questions');
        unknown=missing.filter(x=>x.label).map(x=>x.label);
        status='needs_answers';break;
       }
@@ -112,22 +121,24 @@ export async function triageQueue(context,{limit=5,offset=0}={}){
       const review=dialog.getByRole('button',{name:/^review$/i});
       const next=dialog.getByRole('button',{name:/^next$/i});
       if(await review.count()&&await review.first().isEnabled()){
+       setStage('advancing_to_review');
        await review.first().click({timeout:5000});steps++;status='ready_for_review';break;
       }
       if(await next.count()&&await next.first().isEnabled()){
+       setStage('advancing_form_page');
        await next.first().click({timeout:5000});steps++;continue;
       }
       // No safe Next/Review action. Stop rather than assuming the form is complete.
       status='needs_manual_review';break;
      }
      let added=0;
-     if(unknown.length)added=(await appendUnknownQuestions(unknown.map(question=>({jobId:job.id,platform:'LinkedIn',question,url:job.url})))).added;
+     if(unknown.length){setStage('saving_questions_to_sheet');added=(await appendUnknownQuestions(unknown.map(question=>({jobId:job.id,platform:'LinkedIn',question,url:job.url})))).added;
      results.push({jobId:job.id,status,stepsCompleted:steps,unknownQuestions:unknown.length,logged:added,submitted:false});
      // This triage never presses Submit. Closing this isolated page abandons the form.
     }catch(e){results.push({jobId:job.id,status:cancelRequested?'cancelled':'technical_failure',stage,reason:String(e.message).slice(0,120)})}
-    finally{progress.processed++;progress.updatedAt=new Date().toISOString()}
+    finally{const last=results[results.length-1];if(last?.jobId===job.id)recordResult(last);else recordResult({jobId:job.id,status:'unknown'});setStage('moving_to_next_job')}
    }
   }finally{activePage=null;await page.close().catch(()=>{})}
   return {mode:'safe_multistep_triage',submitted:0,results};
- }finally{running=false;progress.running=false;progress.currentJob=null;progress.updatedAt=new Date().toISOString()}
+ }finally{running=false;progress.running=false;progress.currentJob=null;setStage(cancelRequested?'cancelled':'finished')}
 }
