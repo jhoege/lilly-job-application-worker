@@ -179,7 +179,8 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       const login=await page.locator('input[name="session_key"], input#username').count();
       const text=(await page.locator('main').first().innerText({timeout:3000}).catch(()=>'' )).slice(0,1800);
       const status=login?'login_required':/no longer accepting applications/i.test(text)?'closed':/apply on company website|apply externally/i.test(text)?'external_application':'easy_apply_not_detected';
-      results.push({jobId:job.id,status,diagnostic:'No visible Easy Apply control after page loaded'});continue;
+      const jobSaved=status==='closed'?{saved:false,reason:'Closed posting'}:await saveJobForLater(page,job.source);
+      results.push({jobId:job.id,status,jobSaved:jobSaved.saved,saveNote:jobSaved.reason,diagnostic:'No visible Easy Apply control after page loaded'});continue;
      }
      setStage('opening_application');
      await easy.click({timeout:8000});
@@ -293,7 +294,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
      const outcome=last?.jobId===job.id?last:{jobId:job.id,status:'unknown'};
      if(!submittedIds.has(job.id)&&!['skipped_already_logged','submitted_verified','already_applied_logged'].includes(outcome.status)){
       const label=displayStatus[outcome.status]||'Needs review';
-      const display=(outcome.draftSaved||outcome.jobSaved)&&['needs_answers','needs_manual_review','ready_for_review'].includes(outcome.status)?'Saved - '+label:label;
+      const display=(outcome.draftSaved||outcome.jobSaved)&&!['closed','submitted_verified','submission_unverified'].includes(outcome.status)?'Saved - '+label:label;
       const reason=[outcome.diagnostic?.reason||outcome.reason||outcome.diagnostic||'',outcome.draftNote||'',outcome.saveNote||''].filter(x=>typeof x==='string'&&x).join('; ').slice(0,450);
       try{await upsertApplicationStatus(job,display,reason,{source:job.source})}
       catch(e){outcome.ledgerError=String(e.message).slice(0,120);console.error('[application-ledger] job='+job.id+' '+outcome.ledgerError)}
