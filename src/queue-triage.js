@@ -137,7 +137,15 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null}={}){
      }
      setStage('opening_application');
      await easy.click({timeout:8000});
-     await page.locator('[role="dialog"]').first().waitFor({state:'visible',timeout:8000}).catch(()=>{});
+     await page.locator('[role="dialog"], .jobs-easy-apply-modal, .artdeco-modal').first().waitFor({state:'visible',timeout:8000}).catch(()=>{});
+     // The modal shell often renders before the LinkedIn application questions.
+     // Wait for real form controls instead of treating the loading shell as an empty application.
+     setStage('waiting_for_application_fields');
+     await page.waitForFunction(()=>{
+      const d=document.querySelector('[role="dialog"], .jobs-easy-apply-modal, .artdeco-modal');
+      return !!d&&(d.querySelectorAll('input:not([type="hidden"]),select,textarea').length>0||
+        [...d.querySelectorAll('button')].some(b=>/next|review|submit application|continue/i.test(b.innerText||'')));
+     },{timeout:9000}).catch(()=>{});
      stage='form';
      let steps=0,unknown=[],status='requires_review',diagnostic=null;
      for(let step=0;step<6;step++){
