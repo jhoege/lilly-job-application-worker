@@ -103,7 +103,7 @@ async function initializeBrowser() {
       const record='/data/'+batchVersion+'-result.json';
       if(!fs.existsSync(record))void (async()=>{
         let result;
-        try{result=await runAutoTriage(browserContext,{force:true});}
+        try{const ids=(process.env.APPLICATION_BATCH_JOB_IDS||'').split(',').filter(id=>/^\d{8,12}$/.test(id));result=await runAutoTriage(browserContext,{force:true,ids:ids.length?ids:null});}
         catch(e){result={started:false,error:String(e.message).slice(0,160)};}
         fs.writeFileSync(record,JSON.stringify({...result,finishedAt:new Date().toISOString()}),{mode:0o600});
         console.log('[application-batch] '+JSON.stringify(result));

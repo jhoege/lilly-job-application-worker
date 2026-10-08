@@ -200,15 +200,6 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
      if(/active top secret|top secret.{0,35}must have clearance to start/i.test(postingText)&&/not currently|^no$/i.test(lookupAnswer('Security clearance held?',approved)||'')){
       results.push({jobId:job.id,status:'excluded_qualification',reason:'Active Top Secret clearance required; approved answer says no current clearance'});continue;
      }
-     setStage('resolving_salary_baseline');
-     let salaryBaseline=annualSalaryRange(currentJobStatus+'\n'+postingText);
-     if(!salaryBaseline)salaryBaseline=await researchComparableSalary(context,job);
-     advertisedSalary=salaryRequest(salaryBaseline).amount;
-     job.salaryRequest=advertisedSalary;
-     await setSalaryBaseline(job,salaryBaseline,advertisedSalary);
-     const resumeVersion=ledger.find(x=>x.id===job.id)?.resumeVersion||job.resumeVersion||'';
-     const packet=resumeVersion?await exportResumePacket({...job,resumeVersion}):null;
-     let packetSelected=false;
      setStage('finding_easy_apply');
      // LinkedIn uses both native buttons and custom aria-labels for Easy Apply.
      // Inspect multiple grounded controls; do not infer availability from an incomplete load.
@@ -242,6 +233,15 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       const jobSaved=status==='closed'?{saved:false,reason:'Closed posting'}:await saveJobForLater(page,job.source);
       results.push({jobId:job.id,status,jobSaved:jobSaved.saved,saveNote:jobSaved.reason,diagnostic:'No visible Easy Apply control after page loaded'});continue;
      }
+     setStage('resolving_salary_baseline');
+     let salaryBaseline=annualSalaryRange(currentJobStatus+'\n'+postingText);
+     if(!salaryBaseline)salaryBaseline=await researchComparableSalary(context,job);
+     advertisedSalary=salaryRequest(salaryBaseline).amount;
+     job.salaryRequest=advertisedSalary;
+     await setSalaryBaseline(job,salaryBaseline,advertisedSalary);
+     const resumeVersion=ledger.find(x=>x.id===job.id)?.resumeVersion||job.resumeVersion||'';
+     const packet=resumeVersion?await exportResumePacket({...job,resumeVersion}):null;
+     let packetSelected=false;
      setStage('opening_application');
      await easy.click({timeout:8000});
      let modalReady=false;
@@ -277,7 +277,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       setStage('reading_form_page_'+(step+1));
       const fields=await fieldsOnPage(page);
       if(!fields){status='form_unavailable';break}
-      const missing=[];
+      const missing=[],fillErrors=[];
       if(packet&&!packetSelected&&await page.locator(FORM_SELECTOR+' input[type=file]').count()){
        const uploaded=await uploadResumePacket(page,FORM_SELECTOR,packet);
        if(!uploaded.ok){status='needs_manual_review';diagnostic={reason:uploaded.reason};break;}
@@ -287,7 +287,8 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       for(const f of fields){
        // Trust pre-filled values from the user's prior applications; never overwrite them.
        if(packetSelected&&f.type==='file')continue;
-       if(!f.required||f.filled)continue;
+       const salaryField=/(desired|expected|salary expectation|compensation expectation)/i.test(f.label)&&/(salary|compensation|pay)/i.test(f.label);
+       if((!f.required||f.filled)&&!salaryField)continue;
        const answer=lookupAnswer(f.label,approved,advertisedSalary);
        // Only fill clearly labeled text-like fields. No guessed dropdown, radio, checkbox, file or identity answers.
        if(answer!==undefined&&f.label){
@@ -296,24 +297,34 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
          if(['text','email','tel','number','textarea'].includes(f.type)){
           await input.fill(String(answer),{timeout:2500});
          }else if(f.type==='radio'){
-          const wanted=normalize(answer);
+          const wanted=normalize(/willing to work overtime as needed/i.test(f.label)&&/^I am open to working as required/i.test(answer)?'Yes':answer);
           const group=page.locator('[data-lilly-application="true"] input[type="radio"]').filter({visible:true});
-          const names=await group.evaluateAll(nodes=>nodes.map(n=>({name:n.name,value:n.value,label:n.labels?.[0]?.innerText||n.closest('label')?.innerText||n.parentElement?.innerText||n.getAttribute('aria-label')||''})));
+          const names=await group.evaluateAll(nodes=>nodes.map(n=>{
+           let label=n.getAttribute('aria-label')||(n.getAttribute('aria-labelledby')||'').split(/\s+/).map(id=>document.getElementById(id)?.innerText||'').join(' ').trim()||n.labels?.[0]?.innerText||n.closest('label')?.innerText||'';
+           if(!label.trim())for(let a=n.parentElement;a;a=a.parentElement){
+            const peers=[...a.querySelectorAll('input[type=radio]')].filter(x=>x.name===n.name);
+            if(peers.length>1)break;
+            if((a.innerText||'').trim()){label=a.innerText.trim();break;}
+           }
+           return {name:n.name,value:n.value,label};
+          }));
           const selected=names.findIndex(x=>x.name===f.name&&(normalize(x.value)===wanted||normalize(x.label)===wanted));
           if(selected<0)throw Error('No exact approved radio choice');
           await group.nth(selected).check({timeout:2500});
+         }else if(f.type==='checkbox'&&/indicate all shifts/i.test(f.label)&&/^I am open to any required hours and shifts/i.test(answer)){
+          await input.check({timeout:2500});
          }else if(f.tag==='select'){
           const choices=await input.evaluate(n=>[...n.options].map(o=>({label:o.textContent,value:o.value})));
           const choice=choices.find(o=>normalize(o.label)===normalize(answer)||normalize(o.value)===normalize(answer))||(/salary|compensation|pay/i.test(f.label)&&Number(answer)>0?salaryChoice(choices,Number(answer)):null);
           if(!choice)throw Error('No matching approved select choice');
           await input.selectOption({value:choice.value},{timeout:2500});
          }else throw Error('Unsupported field type');
-        }catch{missing.push(f)}
+        }catch(e){fillErrors.push({label:f.label,type:f.type,error:String(e.message).slice(0,220),target:await input.evaluate(n=>({tag:n.tagName,type:n.type,label:n.getAttribute('aria-label'),id:n.id})).catch(()=>null)});missing.push(f)}
        }else missing.push(f);
       }
       if(missing.length){setStage('collecting_unanswered_questions');
        unknown=[...new Set(missing.map(x=>x.label||('Unlabeled required '+x.type+' field')))];
-       diagnostic={page:step+1,visibleFields:fields.length,unfilledRequired:missing.length,reason:'required_answers_missing',missing:missing.map(f=>({label:f.label,type:f.type})),fields:fields.map(f=>({label:f.label,type:f.type,name:f.name,required:f.required,filled:f.filled})),choices:await page.locator(FORM_SELECTOR+' input[type=radio],'+FORM_SELECTOR+' select').evaluateAll(ns=>ns.map(n=>({name:n.name,value:n.type==='radio'?n.value:null,label:n.labels?.[0]?.innerText||n.closest('label')?.innerText||n.parentElement?.innerText||n.getAttribute('aria-label')||'',options:n.options?[...n.options].map(o=>({label:o.textContent,value:o.value})):[]})))};
+       diagnostic={page:step+1,visibleFields:fields.length,unfilledRequired:missing.length,reason:'required_answers_missing',fillErrors,missing:missing.map(f=>({label:f.label,type:f.type})),fields:fields.map(f=>({label:f.label,type:f.type,name:f.name,required:f.required,filled:f.filled})),choices:await page.locator(FORM_SELECTOR+' input[type=radio],'+FORM_SELECTOR+' select').evaluateAll(ns=>ns.map(n=>({name:n.name,value:n.type==='radio'?n.value:null,label:n.labels?.[0]?.innerText||n.closest('label')?.innerText||n.parentElement?.innerText||n.getAttribute('aria-label')||'',options:n.options?[...n.options].map(o=>({label:o.textContent,value:o.value})):[]})))};
        status='needs_answers';break;
       }
       const dialog=page.locator(FORM_SELECTOR);

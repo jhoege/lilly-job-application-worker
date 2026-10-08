@@ -9,7 +9,7 @@ const statePath=process.env.TRIAGE_STATE_FILE||'/data/job-triage-state.json';
 let busy=false;
 const engineVersion='2026-10-08-sms-repair-v8';
 import {verifiedSubmission,uncertainSubmission,excludedEmployer,excludedApplication} from './job-policy.js';
-export async function runAutoTriage(context,{force=false}={}){
+export async function runAutoTriage(context,{force=false,ids=null}={}){
   if(busy||getTriageStatus().running)return {started:false,reason:'already_running'};
   if(!context)throw Error('Browser unavailable');
   busy=true;
@@ -39,7 +39,7 @@ export async function runAutoTriage(context,{force=false}={}){
      catch(e){console.error('[saved-jobs] could not queue '+job.id+': '+String(e.message).slice(0,100))}
     }
    }
-   const jobs=[...jobsById.values()].filter(j=>!submittedIds.has(j.id)&&!uncertainSubmission(ledger.find(x=>x.id===j.id)?.status)&&!excludedEmployer(j.company)&&!excludedApplication(ledger.find(x=>x.id===j.id)?.status));
+   const jobs=[...jobsById.values()].filter(j=>(!ids||ids.includes(j.id))&&!submittedIds.has(j.id)&&!uncertainSubmission(ledger.find(x=>x.id===j.id)?.status)&&!excludedEmployer(j.company)&&!excludedApplication(ledger.find(x=>x.id===j.id)?.status));
    // Revisit blocked jobs as soon as approved answers change; otherwise limit retries.
    const eligible=jobs.filter(j=>{
     const entry=state[j.id];
