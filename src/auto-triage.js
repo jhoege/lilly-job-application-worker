@@ -23,6 +23,9 @@ export function startAutoTriage(getContext){
     fs.mkdirSync(path.dirname(statePath),{recursive:true});
     fs.writeFileSync(statePath,JSON.stringify(state));
     console.log('[auto-triage] processed='+result.results.length+' statuses='+result.results.map(x=>x.status).join(','));
+    for(const item of result.results){
+     console.log('[auto-triage] job='+item.jobId+' status='+item.status+' steps='+String(item.stepsCompleted||0)+' fields='+String(item.diagnostic?.visibleFields??'n/a')+' buttons='+JSON.stringify((item.diagnostic?.buttons||[]).slice(0,8))+' logged='+String(item.logged||0));
+    }
    }
   }catch(e){console.error('[auto-triage] '+String(e.message).slice(0,150))}
   finally{busy=false}
