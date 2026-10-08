@@ -170,7 +170,8 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null}={}){
        }else missing.push(f);
       }
       if(missing.length){setStage('collecting_unanswered_questions');
-       unknown=missing.filter(x=>x.label).map(x=>x.label);
+       unknown=[...new Set(missing.map(x=>x.label||('Unlabeled required '+x.type+' field')))];
+       diagnostic={page:step+1,visibleFields:fields.length,unfilledRequired:missing.length,reason:'required_answers_missing'};
        status='needs_answers';break;
       }
       const dialog=page.locator('[role="dialog"]');
@@ -188,8 +189,19 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null}={}){
        setStage('advancing_form_page');
        await next.first().click({timeout:5000});steps++;continue;
       }
-      // No safe Next/Review action. Stop rather than assuming the form is complete.
-      status='needs_manual_review';break;
+      // If LinkedIn disables Next/Review, capture blank fields rather than silently stalling.
+      // These become exceptions for the user's approval; never guess the missing response.
+      const emptyFields=fields.filter(f=>!f.filled&&f.label&&f.type!=='checkbox');
+      const invalid=await dialog.locator('[aria-invalid="true"], .artdeco-inline-feedback--error, .fb-dash-form-element__error-field').count();
+      if(emptyFields.length&&(invalid>0||await next.count()||await review.count())){
+       unknown=[...new Set(emptyFields.map(f=>f.label))];
+       status='needs_answers';
+       diagnostic={...diagnostic,reason:'validation_blocked_or_disabled_next',invalidFields:invalid};
+      }else{
+       status='needs_manual_review';
+       diagnostic={...diagnostic,reason:'no_supported_navigation_action',invalidFields:invalid};
+      }
+      break;
      }
      let added=0;
      if(unknown.length){setStage('saving_questions_to_sheet');added=(await appendUnknownQuestions(unknown.map(question=>({jobId:job.id,platform:'LinkedIn',question,url:job.url})))).added;}
