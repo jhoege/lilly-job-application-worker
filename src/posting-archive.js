@@ -1,10 +1,12 @@
 import crypto from 'node:crypto';
 import {setPostingArchive} from './google-answers.js';
+import {driveOAuth} from './drive-oauth.js';
 
 const FOLDER='1NtyYD40oT4mU7CBbd0tJZ260Jm6_GXS9';
 const SCOPE='https://www.googleapis.com/auth/drive.file';
 function b64(v){return Buffer.from(JSON.stringify(v)).toString('base64url')}
 async function accessToken(){
+ if(process.env.GOOGLE_DRIVE_OAUTH_CLIENT_ID || process.env.GOOGLE_DRIVE_OAUTH_CLIENT_SECRET)return driveOAuth.accessToken();
  const c=JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON||'{}');
  if(!c.client_email||!c.private_key)throw Error('Drive credentials unavailable');
  const now=Math.floor(Date.now()/1000),h=b64({alg:'RS256',typ:'JWT'}),p=b64({iss:c.client_email,scope:SCOPE,aud:'https://oauth2.googleapis.com/token',iat:now,exp:now+1800});
@@ -25,7 +27,11 @@ export async function archivePosting(page,job){
   const metadata=JSON.stringify({name:title,mimeType:'application/pdf',parents:[FOLDER],description:'Original job posting captured before application; '+String(job.url||'')});
   const body=Buffer.concat([Buffer.from('--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+metadata+'\r\n--'+boundary+'\r\nContent-Type: application/pdf\r\n\r\n'),pdf,Buffer.from('\r\n--'+boundary+'--\r\n')]);
   const response=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'multipart/related; boundary='+boundary},body,signal:AbortSignal.timeout(25000)});
-  if(!response.ok)throw Error('Drive upload HTTP '+response.status);
+  if(!response.ok){
+   const detail=await response.json().catch(()=>({}));
+   const code=String(detail.error?.errors?.[0]?.reason||detail.error?.status||'unknown').replace(/[^a-zA-Z0-9_]/g,'').slice(0,48);
+   throw Error('Drive upload HTTP '+response.status+' ('+code+')');
+  }
   const file=await response.json();
   if(!file.id)throw Error('Drive returned no file ID');
   const url=file.webViewLink||'https://drive.google.com/file/d/'+file.id+'/view';
@@ -37,3 +43,4 @@ export async function archivePosting(page,job){
   return {ok:false,reason};
  }
 }
+

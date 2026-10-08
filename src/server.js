@@ -8,8 +8,10 @@ import { startQuestionAlerts } from './question-alerts.js';
 import { startAutoTriage } from './auto-triage.js';
 import { handleSmsCommand } from './sms-operations.js';
 import {archivePosting} from './posting-archive.js';
+import {driveOAuth} from './drive-oauth.js';
 
 const app = express();
+app.get('/integrations/google-drive/callback', driveOAuth.callback);
 const port = Number(process.env.PORT || 3000);
 const testMode = process.env.TEST_MODE !== 'false';
 const profilePath = process.env.BROWSER_PROFILE_PATH || '/data/browser-profile';
@@ -47,7 +49,7 @@ app.post('/internal/archive-test',express.json({limit:'1kb'}),async(req,res)=>{
 app.get('/health', (_req, res) => {
   res.status(200).json({
     status: 'ok',
-    release: '2026-10-08-sms-repair-v8',
+    release: '2026-10-08-drive-oauth-v1',
     service: 'lilly-job-application-worker',
     testMode,
     browserReady,
@@ -118,4 +120,5 @@ async function shutdown(signal) {
 
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 process.on('SIGINT', () => void shutdown('SIGINT'));
+
 
