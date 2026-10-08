@@ -15,9 +15,15 @@ export function startAutoTriage(getContext){
    const eligible=jobs.filter(j=>!state[j.id]||Date.now()-state[j.id]>24*60*60*1000);
    if(!eligible.length)return;
    const offset=jobs.findIndex(j=>j.id===eligible[0].id);
-   const result=await triageQueue(getContext(),{limit:1,offset});
-   const first=result.results?.[0];
-   if(first){state[first.jobId]=Date.now();fs.mkdirSync(path.dirname(statePath),{recursive:true});fs.writeFileSync(statePath,JSON.stringify(state));console.log('[auto-triage] processed job='+first.jobId+' status='+first.status)}
+   const result=await triageQueue(getContext(),{limit:5,offset});
+   for(const item of result.results||[]){
+    if(item.jobId)state[item.jobId]=Date.now();
+   }
+   if(result.results?.length){
+    fs.mkdirSync(path.dirname(statePath),{recursive:true});
+    fs.writeFileSync(statePath,JSON.stringify(state));
+    console.log('[auto-triage] processed='+result.results.length+' statuses='+result.results.map(x=>x.status).join(','));
+   }
   }catch(e){console.error('[auto-triage] '+String(e.message).slice(0,150))}
   finally{busy=false}
  };
