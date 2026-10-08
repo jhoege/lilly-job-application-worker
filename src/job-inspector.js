@@ -8,6 +8,7 @@ export function loadCandidateQueue() {
   const parsed = JSON.parse(fs.readFileSync(QUEUE_PATH,'utf8'));
   const seen = new Set();
   return (parsed.jobs || []).filter(job => {
+    if(job.submitted===true || ['submitted_verified','closed_not_accepting_applications'].includes(job.status))return false;
     const id = String(job.linkedinJobId || '');
     if (!validId.test(id) || seen.has(id)) return false;
     seen.add(id);
