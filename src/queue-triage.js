@@ -69,7 +69,7 @@ export async function triageQueue(context,{limit=5,offset=0}={}){
      await page.waitForTimeout(1200);
      setStage('checking_linkedin_application_status');
      const currentJobStatus=await page.locator('main').first().innerText({timeout:4000}).catch(()=>'');
-     if(/application status[\s\\S]{0,100}application submitted/i.test(currentJobStatus)){
+     if(/application status[\s\S]{0,100}application submitted/i.test(currentJobStatus)){
       results.push({jobId:job.id,status:'already_applied'});continue;
      }
      setStage('finding_easy_apply');
@@ -132,7 +132,7 @@ export async function triageQueue(context,{limit=5,offset=0}={}){
       status='needs_manual_review';break;
      }
      let added=0;
-     if(unknown.length){setStage('saving_questions_to_sheet');added=(await appendUnknownQuestions(unknown.map(question=>({jobId:job.id,platform:'LinkedIn',question,url:job.url})))).added;
+     if(unknown.length){setStage('saving_questions_to_sheet');added=(await appendUnknownQuestions(unknown.map(question=>({jobId:job.id,platform:'LinkedIn',question,url:job.url})))).added;}
      results.push({jobId:job.id,status,stepsCompleted:steps,unknownQuestions:unknown.length,logged:added,submitted:false});
      // This triage never presses Submit. Closing this isolated page abandons the form.
     }catch(e){results.push({jobId:job.id,status:cancelRequested?'cancelled':'technical_failure',stage,reason:String(e.message).slice(0,120)})}
