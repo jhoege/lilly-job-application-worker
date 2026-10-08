@@ -29,7 +29,7 @@ async function fieldsOnPage(page){
   const fields=[...dialog.querySelectorAll('input,textarea,select')].filter(el=>el.type!=='hidden'&&el.getClientRects().length);
   return fields.map((el,index)=>{
    const parent=el.closest('fieldset');
-   const label=(el.labels?.[0]?.innerText||el.getAttribute('aria-label')||parent?.querySelector('legend')?.innerText||el.getAttribute('placeholder')||'').replace(/\\s+/g,' ').trim();
+   const label=(el.labels?.[0]?.innerText||el.getAttribute('aria-label')||parent?.querySelector('legend')?.innerText||el.getAttribute('placeholder')||'').replace(/\s+/g,' ').trim();
    const required=el.required||el.getAttribute('aria-required')==='true'||!!el.closest('.fb-dash-form-element')?.querySelector('.fb-dash-form-element__label .visually-hidden');
    const filled=el.type==='radio'
     ? !![...dialog.querySelectorAll('input[type="radio"]')].find(other=>other.name===el.name&&other.checked)
@@ -69,7 +69,7 @@ export async function triageQueue(context,{limit=5,offset=0}={}){
      await page.waitForTimeout(1200);
      setStage('checking_linkedin_application_status');
      const currentJobStatus=await page.locator('main').first().innerText({timeout:4000}).catch(()=>'');
-     if(/application status[\\s\\S]{0,100}application submitted/i.test(currentJobStatus)){
+     if(/application status[\s\\S]{0,100}application submitted/i.test(currentJobStatus)){
       results.push({jobId:job.id,status:'already_applied'});continue;
      }
      setStage('finding_easy_apply');
