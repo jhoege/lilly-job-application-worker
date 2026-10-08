@@ -323,7 +323,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
           if(!choice)throw Error('No matching approved select choice');
           await input.selectOption({value:choice.value},{timeout:2500});
          }else throw Error('Unsupported field type');
-        }catch(e){fillErrors.push({label:f.label,type:f.type,error:String(e.message).slice(0,220),target:await input.evaluate(n=>({tag:n.tagName,type:n.type,label:n.getAttribute('aria-label'),id:n.id}),null,{timeout:800}).catch(()=>null)});missing.push(f)}
+        }catch(e){fillErrors.push({label:f.label,type:f.type,error:String(e.message).slice(0,1200),nativeChoice:e.nativeChoice||null,target:await input.evaluate(n=>({tag:n.tagName,type:n.type,label:n.getAttribute('aria-label'),id:n.id}),null,{timeout:800}).catch(()=>null)});missing.push(f)}
        }else {missing.push(f);unknownFields.push(f);}
       }
       if(missing.length){setStage('collecting_unanswered_questions');
@@ -416,6 +416,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       try{await upsertApplicationStatus(job,display,reason,{source:job.source})}
       catch(e){outcome.ledgerError=String(e.message).slice(0,120);console.error('[application-ledger] job='+job.id+' '+outcome.ledgerError)}
      }
+     console.log('[triage-job-result] '+JSON.stringify(outcome));
      recordResult(outcome);
      setStage('moving_to_next_job');
     }
@@ -437,17 +438,30 @@ async function advanceForm(page,button){
 
 async function checkNativeChoice(page,input){
  if(await input.isChecked())return;
- const marker=await input.evaluate(n=>{
+ const meta=await input.evaluate(n=>{
   const key=n.id||'choice-'+Math.random().toString(36).slice(2);
+  let text=n.getAttribute('aria-label')||n.labels?.[0]?.innerText||'',wrapper=null,scope=null;
   for(let a=n.parentElement;a;a=a.parentElement){
-   const peers=a.querySelectorAll('input[type='+n.type+']');
-   if(peers.length>1)break;
-   if((a.innerText||'').trim()&&a.getClientRects().length){a.setAttribute('data-lilly-choice-for',key);return key;}
+   const peers=[...a.querySelectorAll('input')].filter(x=>x.type===n.type&&(n.type==='checkbox'||x.name===n.name));
+   if(peers.length>1){scope=a;break;}
+   const box=a.getBoundingClientRect();
+   if(!text.trim()&&(a.innerText||'').trim())text=a.innerText.trim();
+   if((a.innerText||'').trim()&&box.width>18&&box.height>12)wrapper=a;
   }
-  return null;
+  if(scope)scope.setAttribute('data-lilly-choice-scope',key);
+  if(wrapper)wrapper.setAttribute('data-lilly-choice-for',key);
+  return {key,id:n.id,text:text.trim(),scope:!!scope,wrapper:!!wrapper,html:(wrapper?.outerHTML||n.parentElement?.outerHTML||'').slice(0,1800)};
  },null,{timeout:1200});
- if(marker){
-  await page.locator(FORM_SELECTOR+' [data-lilly-choice-for='+JSON.stringify(marker)+']').click({timeout:4000});
-  if(!await input.isChecked())throw Error('Visible approved choice click did not select its native input');
- }else await input.check({timeout:2500});
+ let clicked=false;
+ if(meta.scope&&meta.text){
+  const scope=page.locator(FORM_SELECTOR+' [data-lilly-choice-scope='+JSON.stringify(meta.key)+']');
+  for(const candidate of await scope.getByText(meta.text,{exact:true}).all()){
+   const box=await candidate.boundingBox().catch(()=>null);
+   if(box&&box.width>8&&box.height>8&&await candidate.isVisible()){await candidate.click({timeout:4000});clicked=true;break;}
+  }
+ }
+ if(!clicked&&meta.wrapper){await page.locator(FORM_SELECTOR+' [data-lilly-choice-for='+JSON.stringify(meta.key)+']').click({timeout:4000});clicked=true;}
+ if(!clicked)await input.check({timeout:2500});
+ const checked=await page.waitForFunction(id=>!!document.getElementById(id)?.checked,meta.id,{timeout:2500}).then(()=>true).catch(()=>false);
+ if(!checked){const error=Error('Approved visible '+meta.text+' choice did not select its native input');error.nativeChoice=meta;throw error;}
 }
