@@ -4,7 +4,7 @@ import path from 'node:path';
 const queuePath=path.resolve('data/candidate-jobs-2026-10-07.json');
 export function getQueue(){
  const data=JSON.parse(fs.readFileSync(queuePath,'utf8'));
- return data.jobs.map(j=>({id:String(j.linkedinJobId),url:'https://www.linkedin.com/jobs/view/'+j.linkedinJobId+'/',status:j.status||'needs_verification',submitted:!!j.submitted}));
+ return data.jobs.filter(j=>!j.submitted && !['submitted_verified','closed_not_accepting_applications'].includes(j.status)).map(j=>({id:String(j.linkedinJobId),url:'https://www.linkedin.com/jobs/view/'+j.linkedinJobId+'/',status:j.status||'needs_verification',submitted:false}));
 }
 export function salaryRequest({min,max,market}={}){
  const lo=Number(min),hi=Number(max),m=Number(market);
