@@ -37,3 +37,31 @@ export async function checkAnswerConnector(){
  const rows=await readApprovedAnswers();
  return {connected:true,approvedCount:rows.length,hasFirstName:rows.some(x=>x.question==='First name'),hasLocation:rows.some(x=>x.question==='Current location')};
 }
+
+export async function appendUnknownQuestions(items){
+ if(!Array.isArray(items)||!items.length)return {added:0};
+ const access=await token();
+ const base='https://sheets.googleapis.com/v4/spreadsheets/'+SHEET_ID+'/values/';
+ const range=encodeURIComponent("'Questions To Answer'!A1:I1000");
+ const headers={Authorization:'Bearer '+access};
+ const existingResponse=await fetch(base+range,{headers,signal:AbortSignal.timeout(12000)});
+ if(!existingResponse.ok)throw Error('Question bank read failed HTTP '+existingResponse.status);
+ const existing=(await existingResponse.json()).values||[];
+ const seen=new Set(existing.slice(1).map(r=>[r[1]||'',r[2]||'',String(r[3]||'').trim().toLowerCase()].join('|')));
+ const rows=[];
+ for(const q of items){
+  const question=String(q.question||'').trim().slice(0,500);
+  const jobId=String(q.jobId||'').trim();
+  const platform=String(q.platform||'LinkedIn').slice(0,50);
+  if(!question||!jobId)continue;
+  const key=[platform,jobId,question.toLowerCase()].join('|');
+  if(seen.has(key))continue;
+  seen.add(key);
+  rows.push(['Q'+Date.now().toString(36)+'-'+rows.length,platform,jobId,question,'','','Needs answer',String(q.employer||''),String(q.url||'')]);
+ }
+ if(!rows.length)return {added:0};
+ const url=base+encodeURIComponent("'Questions To Answer'!A:I")+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS';
+ const response=await fetch(url,{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({values:rows}),signal:AbortSignal.timeout(12000)});
+ if(!response.ok)throw Error('Question bank append failed HTTP '+response.status);
+ return {added:rows.length};
+}
