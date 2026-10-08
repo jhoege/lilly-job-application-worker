@@ -41,7 +41,7 @@ async function fieldsOnPage(page){
   });
  });
 }
-export async function triageQueue(context,{limit=5,offset=0}={}){
+export async function triageQueue(context,{limit=5,offset=0,ids=null}={}){
  if(running)throw Error('A triage run is already active');
  if(!context)throw Error('Browser unavailable');
  running=true;
@@ -51,7 +51,7 @@ export async function triageQueue(context,{limit=5,offset=0}={}){
  try{
   setStage('loading_answer_database');
   const [approved,submittedIds]=await Promise.all([readApprovedAnswers(),readSubmittedJobIds()]);
-  const jobs=getQueue().filter(x=>!x.submitted&&x.status!=='closed_not_accepting_applications').slice(Math.max(0,Number(offset)||0),Math.max(0,Number(offset)||0)+Math.max(1,Math.min(10,Number(limit)||5)));
+  const jobs=getQueue().filter(x=>!x.submitted&&x.status!=='closed_not_accepting_applications'&&(!Array.isArray(ids)||ids.includes(x.id))).slice(Math.max(0,Number(offset)||0),Math.max(0,Number(offset)||0)+Math.max(1,Math.min(10,Number(limit)||5)));
   progress.total=jobs.length;
   try{
    for(const job of jobs){
