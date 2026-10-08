@@ -1,6 +1,7 @@
 import express from 'express';
 import { chromium } from 'playwright';
 import fs from 'node:fs';
+import { mountAuthBrowser } from './auth-browser.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -55,6 +56,8 @@ async function initializeBrowser() {
     console.error('[browser] Chromium initialization failed:', browserError);
   }
 }
+
+mountAuthBrowser(app, () => browserContext);
 
 const server = app.listen(port, '0.0.0.0', () => {
   console.log(`[server] listening on ${port}`);
