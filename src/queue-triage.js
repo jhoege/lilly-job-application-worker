@@ -1,4 +1,4 @@
-import {getQueue} from './application-support.js';
+import {getQueue,salaryRequest} from './application-support.js';
 import {readApprovedAnswers,appendUnknownQuestions,readSubmittedJobIds,logVerifiedLinkedInApplication} from './google-answers.js';
 let running=false;
 let cancelRequested=false;
@@ -17,10 +17,29 @@ const aliases=new Map([
  ['are you legally authorized to work in the united states','authorized to work in us'],
  ['will you now or in the future require sponsorship for employment visa status e g h 1b visa status','require visa sponsorship now or later']
 ]);
-function lookupAnswer(label,approved){
+function lookupAnswer(label,approved,advertisedSalary){
  const n=normalize(label).replace(/ required$/,'');
- const key=aliases.get(n)||n;
+ let key=aliases.get(n)||n;
+ if(/(desired|expected|salary expectation|compensation expectation)/.test(n)&&/(salary|compensation|pay)/.test(n)){
+  return advertisedSalary==null?undefined:String(advertisedSalary);
+ }
+ if(/(years|how long)/.test(n)&&/(management|managing people)/.test(n))key='management years';
+ else if(/(years|how long)/.test(n)&&/(marina|real estate)/.test(n))key='marina or real estate experience years';
+ else if(/legally authorized|eligible to work|work authorization/.test(n))key='authorized to work in us';
+ else if(/(visa|immigration|employment).*sponsor|sponsor.*(visa|employment)/.test(n))key='require visa sponsorship now or later';
+ else if(/security clearance/.test(n))key='security clearance held';
+ else if(/willing to relocate/.test(n))key='willing to relocate';
+ else if(/phone number|mobile phone/.test(n))key='mobile';
  return approved.find(a=>normalize(a.question)===key)?.answer;
+}
+function advertisedSalaryFromText(text){
+ // Only infer a target from a clearly stated annual salary range.
+ const match=String(text||'').match(/\$\s*([\d,.]+)\s*(k)?\s*(?:\/\s*yr|per year|annually)?\s*[-–]\s*\$\s*([\d,.]+)\s*(k)?\s*(?:\/\s*yr|per year|annually)?/i);
+ if(!match)return null;
+ const min=Number(match[1].replace(/,/g,''))*(match[2]?1000:1);
+ const max=Number(match[3].replace(/,/g,''))*(match[4]?1000:1);
+ if(min<40000||max>2000000||max<min)return null;
+ return salaryRequest({min,max}).amount;
 }
 async function fieldsOnPage(page){
  return page.evaluate(()=>{
@@ -95,6 +114,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null}={}){
       submittedIds.add(job.id);
       results.push({jobId:job.id,status:'already_applied_logged',logged:logged.added});continue;
      }
+     const advertisedSalary=advertisedSalaryFromText(currentJobStatus);
      setStage('finding_easy_apply');
      // LinkedIn uses both native buttons and custom aria-labels for Easy Apply.
      // Inspect multiple grounded controls; do not infer availability from an incomplete load.
@@ -129,11 +149,24 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null}={}){
       for(const f of fields){
        // Trust pre-filled values from the user's prior applications; never overwrite them.
        if(!f.required||f.filled)continue;
-       const answer=lookupAnswer(f.label,approved);
+       const answer=lookupAnswer(f.label,approved,advertisedSalary);
        // Only fill clearly labeled text-like fields. No guessed dropdown, radio, checkbox, file or identity answers.
-       if(answer!==undefined&&f.label&&['text','email','tel','number','textarea'].includes(f.type)){
+       if(answer!==undefined&&f.label){
         const input=page.locator('[role="dialog"] input:not([type="hidden"]), [role="dialog"] textarea, [role="dialog"] select').filter({visible:true}).nth(f.index);
-        try{await input.fill(String(answer),{timeout:2500})}catch{missing.push(f)}
+        try{
+         if(['text','email','tel','number','textarea'].includes(f.type)){
+          await input.fill(String(answer),{timeout:2500});
+         }else if(f.type==='radio'){
+          const wanted=String(answer).trim().toLowerCase();
+          const group=page.locator('[role="dialog"] input[type="radio"]').filter({visible:true});
+          const names=await group.evaluateAll(nodes=>nodes.map(n=>({name:n.name,value:n.value,label:n.labels?.[0]?.innerText||''})));
+          const selected=names.findIndex(x=>x.name===f.name&&(normalize(x.value)===wanted||normalize(x.label)===wanted));
+          if(selected<0)throw Error('No exact approved radio choice');
+          await group.nth(selected).check({timeout:2500});
+         }else if(f.tag==='select'){
+          await input.selectOption({label:String(answer)},{timeout:2500});
+         }else throw Error('Unsupported field type');
+        }catch{missing.push(f)}
        }else missing.push(f);
       }
       if(missing.length){setStage('collecting_unanswered_questions');
