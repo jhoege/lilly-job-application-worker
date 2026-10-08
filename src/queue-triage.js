@@ -53,8 +53,6 @@ export async function triageQueue(context,{limit=5,offset=0}={}){
   const [approved,submittedIds]=await Promise.all([readApprovedAnswers(),readSubmittedJobIds()]);
   const jobs=getQueue().filter(x=>!x.submitted&&x.status!=='closed_not_accepting_applications').slice(Math.max(0,Number(offset)||0),Math.max(0,Number(offset)||0)+Math.max(1,Math.min(10,Number(limit)||5)));
   progress.total=jobs.length;
-  const page=await context.newPage();
-  activePage=page;
   try{
    for(const job of jobs){
     if(cancelRequested)break;
@@ -62,7 +60,14 @@ export async function triageQueue(context,{limit=5,offset=0}={}){
     setStage('checking_submission_history');
     if(submittedIds.has(job.id)){const result={jobId:job.id,status:'skipped_already_logged',visited:false};results.push(result);recordResult(result);continue;}
     let stage='navigation';
+    let page=null;
+    let watchdog=null;
+    let timedOut=false;
     try{
+     page=await context.newPage();
+     activePage=page;
+     // Abort a single slow job without blocking the remaining queue.
+     watchdog=setTimeout(()=>{timedOut=true;void page.close().catch(()=>{})},120000);
      setStage('opening_job');
      await page.goto(job.url,{waitUntil:'domcontentloaded',timeout:25000});
      await page.locator('h1').first().waitFor({state:'visible',timeout:9000}).catch(()=>{});
@@ -135,10 +140,18 @@ export async function triageQueue(context,{limit=5,offset=0}={}){
      if(unknown.length){setStage('saving_questions_to_sheet');added=(await appendUnknownQuestions(unknown.map(question=>({jobId:job.id,platform:'LinkedIn',question,url:job.url})))).added;}
      results.push({jobId:job.id,status,stepsCompleted:steps,unknownQuestions:unknown.length,logged:added,submitted:false});
      // This triage never presses Submit. Closing this isolated page abandons the form.
-    }catch(e){results.push({jobId:job.id,status:cancelRequested?'cancelled':'technical_failure',stage,reason:String(e.message).slice(0,120)})}
-    finally{const last=results[results.length-1];if(last?.jobId===job.id)recordResult(last);else recordResult({jobId:job.id,status:'unknown'});setStage('moving_to_next_job')}
+    }catch(e){results.push({jobId:job.id,status:cancelRequested?'cancelled':timedOut?'job_timeout':'technical_failure',stage,reason:String(e.message).slice(0,120)})}
+    finally{
+     if(watchdog)clearTimeout(watchdog);
+     activePage=null;
+     if(page)await page.close().catch(()=>{});
+     const last=results[results.length-1];
+     if(last?.jobId===job.id)recordResult(last);
+     else recordResult({jobId:job.id,status:'unknown'});
+     setStage('moving_to_next_job');
+    }
    }
-  }finally{activePage=null;await page.close().catch(()=>{})}
+  }finally{activePage=null}
   return {mode:'safe_multistep_triage',submitted:0,results};
  }finally{running=false;progress.running=false;progress.currentJob=null;setStage(cancelRequested?'cancelled':'finished')}
 }
