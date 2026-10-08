@@ -31,7 +31,7 @@ export async function inspectForm(context){
 }
 export async function batchInspect(context,{limit=5}={}){
  if(!context)throw Error('Browser unavailable');
- const items=getQueue().filter(j=>!j.submitted).slice(0,Math.max(1,Math.min(10,Number(limit)||5)));
+ const items=getQueue().filter(j=>!j.submitted && j.status==='needs_verification').slice(0,Math.max(1,Math.min(10,Number(limit)||5)));
  const p=context.pages()[0]||await context.newPage();
  const results=[];
  for(const j of items){
