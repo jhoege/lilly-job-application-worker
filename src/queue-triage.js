@@ -54,8 +54,9 @@ async function fieldsOnPage(page){
    const fieldset=el.closest('fieldset');
    const wrapper=el.closest('.fb-dash-form-element, .jobs-easy-apply-form-element, .artdeco-text-input, .fb-dash-form-element-group');
    const label=normalizeText(
-    el.labels?.[0]?.innerText||
+    (el.type==='radio'||el.type==='checkbox'?fieldset?.querySelector('legend')?.innerText:null)||
     el.getAttribute('aria-label')||
+    el.labels?.[0]?.innerText||
     (el.getAttribute('aria-labelledby')||'').split(/\s+/).map(id=>document.getElementById(id)?.innerText).filter(Boolean).join(' ')||
     fieldset?.querySelector('legend')?.innerText||
     wrapper?.querySelector('label, .fb-dash-form-element__label')?.innerText||
@@ -114,7 +115,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null}={}){
       submittedIds.add(job.id);
       results.push({jobId:job.id,status:'already_applied_logged',logged:logged.added});continue;
      }
-     const advertisedSalary=advertisedSalaryFromText(currentJobStatus);
+     const advertisedSalary=advertisedSalaryFromText(currentJobStatus)??(Number(job.salaryRequest)>=120000?Number(job.salaryRequest):120000);
      setStage('finding_easy_apply');
      // LinkedIn uses both native buttons and custom aria-labels for Easy Apply.
      // Inspect multiple grounded controls; do not infer availability from an incomplete load.
