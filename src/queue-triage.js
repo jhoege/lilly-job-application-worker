@@ -41,10 +41,25 @@ function advertisedSalaryFromText(text){
  if(min<40000||max>2000000||max<min)return null;
  return salaryRequest({min,max}).amount;
 }
+const FORM_SELECTOR='[data-lilly-application="true"]';
 async function fieldsOnPage(page){
  return page.evaluate(()=>{
-  const dialog=document.querySelector('.jobs-easy-apply-modal');
+  const candidates=[...document.querySelectorAll('[data-lilly-application="true"],[role="dialog"]')];
+  for(const el of candidates)el.removeAttribute('data-lilly-application');
+  const ranked=candidates.map(d=>{
+   const buttons=[...d.querySelectorAll('button')].map(b=>(b.innerText||b.getAttribute('aria-label')||'').trim()).filter(Boolean);
+   const title=(d.querySelector('h1,h2,h3,legend')?.innerText||'').slice(0,120);
+   const text=(d.innerText||'').slice(0,600);
+   const controls=d.querySelectorAll('input:not([type="hidden"]),textarea,select').length;
+   const action=buttons.some(b=>/^(next|continue|review|submit application|review application)/i.test(b));
+   const score=(d.classList.contains('jobs-easy-apply-modal')?20:0)+(action?12:0)+
+    (/contact info|resume|additional questions|application|apply to/i.test(title+' '+text)?5:0)+
+    (controls>1?3:0)-(buttons.length===1&&/show all/i.test(buttons[0])?20:0);
+   return {d,score};
+  }).sort((a,b)=>b.score-a.score);
+  const dialog=ranked[0]?.score>=7?ranked[0].d:null;
   if(!dialog)return null;
+  dialog.setAttribute('data-lilly-application','true');
   const fields=[...dialog.querySelectorAll('input,textarea,select')].filter(el=>{
    const style=window.getComputedStyle(el);
    return el.type!=='hidden'&&style.visibility!=='hidden'&&style.display!=='none'&&el.getClientRects().length>0;
@@ -77,7 +92,7 @@ async function fieldsOnPage(page){
  });
 }
 async function saveDraftIfSupported(page){
- const dialog=page.locator('.jobs-easy-apply-modal').first();
+ const dialog=page.locator(FORM_SELECTOR).first();
  try{
   const save=dialog.getByRole('button',{name:/^save( application| draft)?$/i}).first();
   if(await save.isVisible({timeout:800}).catch(()=>false)){
@@ -187,16 +202,24 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
      }
      setStage('opening_application');
      await easy.click({timeout:8000});
-     const appModal=page.locator('.jobs-easy-apply-modal').first();
-     if(!await appModal.isVisible({timeout:9000}).catch(()=>false)){
-      const diagnostic=await page.evaluate(()=>[...document.querySelectorAll('[role="dialog"]')].map(d=>({className:String(d.className).slice(0,90),buttons:[...d.querySelectorAll('button')].map(b=>b.innerText.trim()).filter(Boolean).slice(0,8)})).slice(0,5));
+     let modalReady=false;
+     for(let attempt=0;attempt<9;attempt++){
+      if(await fieldsOnPage(page)){modalReady=true;break}
+      await page.waitForTimeout(700);
+     }
+     if(!modalReady){
+      const diagnostic=await page.evaluate(()=>[...document.querySelectorAll('[role="dialog"]')].map(d=>({
+       heading:(d.querySelector('h1,h2,h3')?.innerText||'').slice(0,90),
+       buttons:[...d.querySelectorAll('button')].map(b=>b.innerText.trim()).filter(Boolean).slice(0,8),
+       inputs:d.querySelectorAll('input,textarea,select').length
+      })).slice(0,5));
       results.push({jobId:job.id,status:'application_modal_not_found',diagnostic:JSON.stringify(diagnostic).slice(0,350)});continue;
      }
      // The modal shell often renders before the LinkedIn application questions.
      // Wait for real form controls instead of treating the loading shell as an empty application.
      setStage('waiting_for_application_fields');
      await page.waitForFunction(()=>{
-      const d=document.querySelector('.jobs-easy-apply-modal');
+      const d=document.querySelector('[data-lilly-application="true"]');
       return !!d&&(d.querySelectorAll('input:not([type="hidden"]),select,textarea').length>0||
         [...d.querySelectorAll('button')].some(b=>/next|review|submit application|continue/i.test(b.innerText||'')));
      },null,{timeout:9000}).catch(()=>{});
@@ -214,13 +237,13 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
        const answer=lookupAnswer(f.label,approved,advertisedSalary);
        // Only fill clearly labeled text-like fields. No guessed dropdown, radio, checkbox, file or identity answers.
        if(answer!==undefined&&f.label){
-        const input=page.locator('.jobs-easy-apply-modal input:not([type="hidden"]), .jobs-easy-apply-modal textarea, .jobs-easy-apply-modal select').filter({visible:true}).nth(f.index);
+        const input=page.locator(`FORM_SELECTOR` input:not([type="hidden"]), [data-lilly-application="true"] textarea, [data-lilly-application="true"] select').filter({visible:true}).nth(f.index);
         try{
          if(['text','email','tel','number','textarea'].includes(f.type)){
           await input.fill(String(answer),{timeout:2500});
          }else if(f.type==='radio'){
           const wanted=String(answer).trim().toLowerCase();
-          const group=page.locator('.jobs-easy-apply-modal input[type="radio"]').filter({visible:true});
+          const group=page.locator(`FORM_SELECTOR` input[type="radio"]').filter({visible:true});
           const names=await group.evaluateAll(nodes=>nodes.map(n=>({name:n.name,value:n.value,label:n.labels?.[0]?.innerText||''})));
           const selected=names.findIndex(x=>x.name===f.name&&(normalize(x.value)===wanted||normalize(x.label)===wanted));
           if(selected<0)throw Error('No exact approved radio choice');
@@ -236,7 +259,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
        diagnostic={page:step+1,visibleFields:fields.length,unfilledRequired:missing.length,reason:'required_answers_missing'};
        status='needs_answers';break;
       }
-      const dialog=page.locator('.jobs-easy-apply-modal');
+      const dialog=page.locator(FORM_SELECTOR);
       const review=dialog.getByRole('button',{name:/^(review|review application)$/i});
       const next=dialog.getByRole('button',{name:/^(next|continue|continue to next step)$/i});
       const submit=dialog.getByRole('button',{name:/^submit application$/i});
@@ -249,7 +272,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
         // Re-check submitted IDs immediately before submitting to avoid a stale queue.
         if((await readSubmittedJobIds()).has(job.id)){status='already_applied_logged';break}
         const validation=await page.evaluate(()=>{
-         const dialog=document.querySelector('.jobs-easy-apply-modal');
+         const dialog=document.querySelector('[data-lilly-application="true"]');
          if(!dialog)return {invalid:1,reason:'Application dialog missing'};
          const invalid=[...dialog.querySelectorAll('input,textarea,select')].filter(el=>el.getClientRects().length&&
           (el.getAttribute('aria-invalid')==='true'||(el.required&&!el.checkValidity())));
