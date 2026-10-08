@@ -46,18 +46,25 @@ export function startAutoTriage(getContext){
     return previous!==fingerprint||version!==engineVersion||Date.now()-last>retryHours*60*60*1000;
    });
    if(!eligible.length)return;
-   const ids=eligible.slice(0,5).map(j=>j.id);
-   const result=await triageQueue(getContext(),{limit:5,ids,jobsOverride:jobs});
-   for(const item of result.results||[]){
-    if(item.jobId)state[item.jobId]={at:Date.now(),answers:fingerprint,status:item.status,engine:engineVersion};
-   }
-   if(result.results?.length){
-    fs.mkdirSync(path.dirname(statePath),{recursive:true});
-    fs.writeFileSync(statePath,JSON.stringify(state));
-    console.log('[auto-triage] processed='+result.results.length+' statuses='+result.results.map(x=>x.status).join(','));
-    for(const item of result.results){
-     console.log('[auto-triage] job='+item.jobId+' status='+item.status+' steps='+String(item.stepsCompleted||0)+' fields='+String(item.diagnostic?.visibleFields??'n/a')+' buttons='+JSON.stringify((item.diagnostic?.buttons||[]).slice(0,8))+' logged='+String(item.logged||0));
+   // Process the full eligible queue in consecutive batches, not just five per hour.
+   // Cap at 25 per cycle to avoid overloading LinkedIn and Google Sheets.
+   for(let offset=0;offset<Math.min(eligible.length,25);offset+=5){
+    const ids=eligible.slice(offset,offset+5).map(j=>j.id);
+    let result;
+    try{result=await triageQueue(getContext(),{limit:5,ids,jobsOverride:jobs})}
+    catch(e){console.error('[auto-triage] batch failed '+String(e.message).slice(0,120));break}
+    for(const item of result.results||[]){
+     if(item.jobId)state[item.jobId]={at:Date.now(),answers:fingerprint,status:item.status,engine:engineVersion};
     }
+    if(result.results?.length){
+     fs.mkdirSync(path.dirname(statePath),{recursive:true});
+     fs.writeFileSync(statePath,JSON.stringify(state));
+     console.log('[auto-triage] processed='+result.results.length+' statuses='+result.results.map(x=>x.status).join(','));
+     for(const item of result.results){
+      console.log('[auto-triage] job='+item.jobId+' status='+item.status+' steps='+String(item.stepsCompleted||0)+' fields='+String(item.diagnostic?.visibleFields??'n/a')+' buttons='+JSON.stringify((item.diagnostic?.buttons||[]).slice(0,8))+' logged='+String(item.logged||0));
+     }
+    }
+    if(offset+5<eligible.length)await new Promise(resolve=>setTimeout(resolve,4000));
    }
   }catch(e){console.error('[auto-triage] '+String(e.message).slice(0,150))}
   finally{busy=false}
