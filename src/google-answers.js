@@ -117,3 +117,38 @@ export async function logVerifiedLinkedInApplication(job){
  if(!response.ok)throw Error('Application log append failed HTTP '+response.status);
  return {added:true};
 }
+
+const SHEETS_BASE='https://sheets.googleapis.com/v4/spreadsheets/'+SHEET_ID+'/values/';
+async function ledgerRows(access){
+ const range=encodeURIComponent("'Applications'!A1:K2000");
+ const response=await fetch(SHEETS_BASE+range,{headers:{Authorization:'Bearer '+access},signal:AbortSignal.timeout(12000)});
+ if(!response.ok)throw Error('Application ledger read failed HTTP '+response.status);
+ return (await response.json()).values||[];
+}
+export async function readApplicationLedger(){
+ const access=await token();
+ const rows=await ledgerRows(access);
+ return rows.slice(1).filter(r=>r[0]).map(r=>({id:String(r[0]),status:r[4]||'',reason:r[9]||'',source:r[10]||''}));
+}
+export async function upsertApplicationStatus(job,status,reason='',extra={}){
+ const id=String(job?.id||'').trim();
+ if(!/^[0-9]{8,12}$/.test(id))throw Error('Cannot log job without valid LinkedIn ID');
+ const access=await token();
+ const rows=await ledgerRows(access);
+ const index=rows.findIndex((r,i)=>i>0&&String(r[0]||'').trim()===id);
+ const existing=index>0?rows[index]:null;
+ if(existing&&/submitted|applied|hired|interview/i.test(existing[4]||''))
+  return {updated:false,reason:'already_submitted'};
+ const now=new Date().toISOString();
+ const normalizedStatus=String(status||'Needs review').slice(0,90);
+ const salary=String(existing?.[5]||job.salaryRequest||'');
+ const url=String(job.url||'https://www.linkedin.com/jobs/view/'+id+'/');
+ const values=existing
+  ? [[normalizedStatus,salary,existing[6]||'',now,url,String(reason||'').slice(0,450),String(extra.source||job.source||'Original queue')]]
+  : [[id,'LinkedIn',String(job.company||''),String(job.title||''),normalizedStatus,salary,'',now,url,String(reason||'').slice(0,450),String(extra.source||job.source||'Original queue')]];
+ const range=existing?"'Applications'!E"+(index+1)+":K"+(index+1):"'Applications'!A:K";
+ const endpoint=SHEETS_BASE+encodeURIComponent(range)+(existing?'?valueInputOption=RAW':':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS');
+ const response=await fetch(endpoint,{method:existing?'PUT':'POST',headers:{Authorization:'Bearer '+access,'Content-Type':'application/json'},body:JSON.stringify({values}),signal:AbortSignal.timeout(12000)});
+ if(!response.ok)throw Error('Application ledger write failed HTTP '+response.status);
+ return {updated:true,status:normalizedStatus};
+}
