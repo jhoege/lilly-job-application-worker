@@ -3,6 +3,7 @@ import { chromium } from 'playwright';
 import fs from 'node:fs';
 import { mountAuthBrowser } from './auth-browser.js';
 import { checkAnswerConnector } from './google-answers.js';
+import { startQuestionAlerts } from './question-alerts.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -65,6 +66,7 @@ mountAuthBrowser(app, () => browserContext, checkAnswerConnector);
 const server = app.listen(port, '0.0.0.0', () => {
   console.log(`[server] listening on ${port}`);
   void initializeBrowser();
+  startQuestionAlerts();
 });
 
 async function shutdown(signal) {
