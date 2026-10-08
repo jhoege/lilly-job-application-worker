@@ -208,12 +208,18 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       await page.waitForTimeout(700);
      }
      if(!modalReady){
-      const diagnostic=await page.evaluate(()=>[...document.querySelectorAll('[role="dialog"]')].map(d=>({
-       heading:(d.querySelector('h1,h2,h3')?.innerText||'').slice(0,90),
-       buttons:[...d.querySelectorAll('button')].map(b=>b.innerText.trim()).filter(Boolean).slice(0,8),
-       inputs:d.querySelectorAll('input,textarea,select').length
-      })).slice(0,5));
-      results.push({jobId:job.id,status:'application_modal_not_found',diagnostic:JSON.stringify(diagnostic).slice(0,350)});continue;
+      const diagnostic=await page.evaluate(()=>({
+       url:location.href.slice(0,180),
+       title:document.title.slice(0,110),
+       dialogs:[...document.querySelectorAll('[role="dialog"]')].map(d=>({
+        heading:(d.querySelector('h1,h2,h3')?.innerText||'').slice(0,70),
+        buttons:[...d.querySelectorAll('button')].map(b=>b.innerText.trim()).filter(Boolean).slice(0,6),
+        inputs:d.querySelectorAll('input,textarea,select').length
+       })).slice(0,4),
+       loginVisible:!!document.querySelector('input[name="session_key"],input#username'),
+       formCount:document.querySelectorAll('form').length
+      }));
+      results.push({jobId:job.id,status:'application_modal_not_found',diagnostic:JSON.stringify(diagnostic).slice(0,450)});continue;
      }
      // The modal shell often renders before the LinkedIn application questions.
      // Wait for real form controls instead of treating the loading shell as an empty application.
