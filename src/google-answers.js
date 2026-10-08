@@ -13,10 +13,10 @@ function credential(){
  if(c.type!=='service_account'||!c.client_email||!c.private_key)throw Error('Invalid service-account credential structure');
  return c;
 }
-async function token(){
+async function token(scope=SCOPE){
  const c=credential(),now=Math.floor(Date.now()/1000);
  const header=base64url({alg:'RS256',typ:'JWT'});
- const claims=base64url({iss:c.client_email,scope:SCOPE,aud:TOKEN_URL,iat:now,exp:now+3000});
+ const claims=base64url({iss:c.client_email,scope,aud:TOKEN_URL,iat:now,exp:now+3000});
  const unsigned=header+'.'+claims;
  const signature=crypto.sign('RSA-SHA256',Buffer.from(unsigned),c.private_key).toString('base64url');
  const response=await fetch(TOKEN_URL,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'urn:ietf:params:oauth:grant-type:jwt-bearer',assertion:unsigned+'.'+signature}),signal:AbortSignal.timeout(12000)});
@@ -24,6 +24,7 @@ async function token(){
  const body=await response.json();
  return body.access_token;
 }
+export async function serviceDriveToken(){return token('https://www.googleapis.com/auth/drive.readonly');}
 const SEARCH_SHEET='1ksa_XvJIOR0oa-NW7LFxjBY7Ax29bnGX4jVVHCco66g';
 export async function readSearchLedger(){
  const access=await token();

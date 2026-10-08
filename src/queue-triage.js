@@ -25,6 +25,8 @@ function lookupAnswer(label,approved,advertisedSalary){
  if(/(desired|expected|salary expectation|compensation expectation)/.test(n)&&/(salary|compensation|pay)/.test(n)){
   return advertisedSalary==null?undefined:String(advertisedSalary);
  }
+ const exact=approved.find(a=>normalize(a.question).replace(/ required$/,'')===n);
+ if(exact)return exact.answer;
  if(/(years|how long)/.test(n)&&/(management|managing people)/.test(n))key='management years';
  else if(/(years|how long)/.test(n)&&/(marina|real estate)/.test(n))key='marina or real estate experience years';
  else if(/legally authorized|eligible to work|work authorization/.test(n))key='authorized to work in us';
@@ -46,7 +48,7 @@ function advertisedSalaryFromText(text){
 const FORM_SELECTOR='[data-lilly-application="true"]';
 async function fieldsOnPage(page){
  return page.evaluate(()=>{
-  const candidates=[...document.querySelectorAll('.jobs-easy-apply-modal,[role="dialog"]')];
+  const candidates=[...document.querySelectorAll('dialog,.jobs-easy-apply-modal,[role="dialog"],[aria-modal="true"]')].filter(d=>d.getClientRects().length);
   for(const el of candidates)el.removeAttribute('data-lilly-application');
   const ranked=candidates.map(d=>{
    const buttons=[...d.querySelectorAll('button')].map(b=>(b.innerText||b.getAttribute('aria-label')||'').trim()).filter(Boolean);
@@ -81,7 +83,7 @@ async function fieldsOnPage(page){
    );
    const required=el.required||el.getAttribute('aria-required')==='true'||
     !!wrapper?.querySelector('label .visually-hidden, .fb-dash-form-element__label .visually-hidden')||
-    /[*]\s*$/.test(el.labels?.[0]?.innerText||'');
+    /[*]\s*$/.test(el.labels?.[0]?.innerText||'')||/[*]\s*$/.test(fieldset?.querySelector('legend')?.innerText||'');
    const filled=el.type==='radio'
     ? !![...dialog.querySelectorAll('input[type="radio"]')].find(other=>other.name===el.name&&other.checked)
     : el.type==='checkbox' ? el.checked
@@ -277,7 +279,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
          if(['text','email','tel','number','textarea'].includes(f.type)){
           await input.fill(String(answer),{timeout:2500});
          }else if(f.type==='radio'){
-          const wanted=String(answer).trim().toLowerCase();
+          const wanted=normalize(answer);
           const group=page.locator('[data-lilly-application="true"] input[type="radio"]').filter({visible:true});
           const names=await group.evaluateAll(nodes=>nodes.map(n=>({name:n.name,value:n.value,label:n.labels?.[0]?.innerText||''})));
           const selected=names.findIndex(x=>x.name===f.name&&(normalize(x.value)===wanted||normalize(x.label)===wanted));

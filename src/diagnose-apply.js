@@ -1,4 +1,5 @@
 import {readApplicationLedger,recordSearchAttempt} from './google-answers.js';
+import {exportResumePacket} from './resume-packet.js';
 export async function diagnoseApply(context){
  const page=await context.newPage(),failures=[];
  page.on('requestfailed',r=>failures.push({url:r.url().split('?')[0],error:r.failure()?.errorText}));
@@ -30,10 +31,16 @@ export async function diagnoseApply(context){
    })});}catch(e){snapshots.push({url:frame.url().split('?')[0],error:String(e.message).slice(0,120)});}
   }
   let trackerWrite;
+  let packetExport;
+  try{
+   const job=(await readApplicationLedger()).find(j=>j.id==='4475816066');
+   const packet=await exportResumePacket(job);
+   packetExport={ok:true,name:packet.name,bytes:packet.buffer.length};
+  }catch(e){packetExport={error:String(e.message).slice(0,130)};}
   try{
    const job=(await readApplicationLedger()).find(j=>j.id==='4457377785');
    trackerWrite=await recordSearchAttempt(job.url,job.status,'Worker tracker-write verification succeeded. Existing application outcome preserved: '+job.reason);
   }catch(e){trackerWrite={error:String(e.message).slice(0,130)};}
-  return {activation,snapshots,trackerWrite,failures:failures.slice(0,20),pages:context.pages().map(p=>p.url().split('?')[0])};
+  return {activation,snapshots,trackerWrite,packetExport,failures:failures.slice(0,20),pages:context.pages().map(p=>p.url().split('?')[0])};
  }finally{await page.close().catch(()=>{});}
 }
