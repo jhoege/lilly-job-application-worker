@@ -24,20 +24,35 @@ function lookupAnswer(label,approved){
 }
 async function fieldsOnPage(page){
  return page.evaluate(()=>{
-  const dialog=document.querySelector('[role="dialog"]');
+  const dialog=document.querySelector('[role="dialog"], .jobs-easy-apply-modal, .artdeco-modal');
   if(!dialog)return null;
-  const fields=[...dialog.querySelectorAll('input,textarea,select')].filter(el=>el.type!=='hidden'&&el.getClientRects().length);
+  const fields=[...dialog.querySelectorAll('input,textarea,select')].filter(el=>{
+   const style=window.getComputedStyle(el);
+   return el.type!=='hidden'&&style.visibility!=='hidden'&&style.display!=='none'&&el.getClientRects().length>0;
+  });
+  const normalizeText=s=>String(s||'').replace(/\s+/g,' ').replace(/\s*\*\s*$/,'').trim();
   return fields.map((el,index)=>{
-   const parent=el.closest('fieldset');
-   const label=(el.labels?.[0]?.innerText||el.getAttribute('aria-label')||parent?.querySelector('legend')?.innerText||el.getAttribute('placeholder')||'').replace(/\s+/g,' ').trim();
-   const required=el.required||el.getAttribute('aria-required')==='true'||!!el.closest('.fb-dash-form-element')?.querySelector('.fb-dash-form-element__label .visually-hidden');
+   const fieldset=el.closest('fieldset');
+   const wrapper=el.closest('.fb-dash-form-element, .jobs-easy-apply-form-element, .artdeco-text-input, .fb-dash-form-element-group');
+   const label=normalizeText(
+    el.labels?.[0]?.innerText||
+    el.getAttribute('aria-label')||
+    (el.getAttribute('aria-labelledby')||'').split(/\s+/).map(id=>document.getElementById(id)?.innerText).filter(Boolean).join(' ')||
+    fieldset?.querySelector('legend')?.innerText||
+    wrapper?.querySelector('label, .fb-dash-form-element__label')?.innerText||
+    el.getAttribute('placeholder')
+   );
+   const required=el.required||el.getAttribute('aria-required')==='true'||
+    !!wrapper?.querySelector('label .visually-hidden, .fb-dash-form-element__label .visually-hidden')||
+    /[*]\s*$/.test(el.labels?.[0]?.innerText||'');
    const filled=el.type==='radio'
     ? !![...dialog.querySelectorAll('input[type="radio"]')].find(other=>other.name===el.name&&other.checked)
     : el.type==='checkbox' ? el.checked
-    : el.type==='select-one' ? !!el.value&&!/^(select|choose|please select)$/i.test(el.selectedOptions?.[0]?.textContent?.trim()||'')
+    : el.tagName==='SELECT' ? !!el.value&&!/^(select|choose|please select)$/i.test(el.selectedOptions?.[0]?.textContent?.trim()||'')
     : el.type==='file' ? !!el.files?.length
     : !!String(el.value||'').trim();
-   return {index,label:label.slice(0,350),type:el.type||el.tagName.toLowerCase(),required,filled};
+   return {index,label:label.slice(0,350),type:el.type||el.tagName.toLowerCase(),required,filled,
+    tag:el.tagName.toLowerCase(),name:String(el.name||'').slice(0,100)};
   });
  });
 }
