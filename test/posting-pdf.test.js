@@ -19,7 +19,7 @@ test('PDF renders the full extracted description on a separate page rather than 
  const description={waitFor:async()=>{},textContent:async()=>text};
  const expand={filter(){return this},first(){return this},isVisible:async()=>false};
  const header={innerText:async()=>'$134K/yr - $184K/yr'};
- const page={locator:selector=>selector.includes('.jobs-description__content')?{first:()=>description}:selector.includes('button')?expand:{first:()=>header},context:()=>({newPage:async()=>printPage}),pdf:async()=>{throw Error('Clipped page must not be printed')}};
+ const page={waitForFunction:async()=>{},locator:selector=>selector.includes('.jobs-description__content')?{first:()=>description}:selector.includes('button')?expand:{first:()=>header},context:()=>({newPage:async()=>printPage}),pdf:async()=>{throw Error('Clipped page must not be printed')}};
  assert.equal((await capturePostingPdf(page,job)).toString(),'PDF');
  assert.ok(rendered.includes('LAST REQUIREMENT'));assert.equal(closed,true);
 });

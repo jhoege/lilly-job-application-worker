@@ -8,7 +8,10 @@ export function postingHtml({job,description,header,capturedAt}){
 
 export async function capturePostingPdf(page,job){
  const descriptionNode=page.locator(DESCRIPTION).first();
- try{await descriptionNode.waitFor({state:'visible',timeout:12000})}
+ try{
+  await descriptionNode.waitFor({state:'visible',timeout:12000});
+  await page.waitForFunction(selector=>[...document.querySelectorAll(selector)].some(node=>(node.textContent||'').trim().length>=500),DESCRIPTION,{timeout:15000});
+ }
  catch{
   const diagnostic=await page.evaluate(()=>{
    const main=document.querySelector('main');
