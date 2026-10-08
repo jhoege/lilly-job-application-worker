@@ -87,8 +87,8 @@ async function initializeBrowser() {
     browserReady = true;
     browserError = null;
     console.log(`[browser] Chromium ready; profile=${profilePath}; testMode=${testMode}`);
-    if(process.env.ARCHIVE_CAPTURE_VERIFY_VERSION==='fulltext-v1'){
-      const record='/data/archive-fulltext-v1-result.json';
+    if(/^fulltext-v\d+$/.test(process.env.ARCHIVE_CAPTURE_VERIFY_VERSION||'')){
+      const record='/data/archive-'+process.env.ARCHIVE_CAPTURE_VERIFY_VERSION+'-result.json';
       if(!fs.existsSync(record))void (async()=>{
         let p,result;
         try{

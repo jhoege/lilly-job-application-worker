@@ -8,7 +8,17 @@ export function postingHtml({job,description,header,capturedAt}){
 
 export async function capturePostingPdf(page,job){
  const descriptionNode=page.locator(DESCRIPTION).first();
- await descriptionNode.waitFor({state:'visible',timeout:12000});
+ try{await descriptionNode.waitFor({state:'visible',timeout:12000})}
+ catch{
+  const diagnostic=await page.evaluate(()=>{
+   const main=document.querySelector('main');
+   return {headings:[...(main||document).querySelectorAll('h1,h2,h3')].map(e=>e.textContent.trim()).slice(0,15),
+    candidates:[...(main||document).querySelectorAll('[id],[class],[data-testid]')].filter(e=>/description|job.*detail|about/i.test(e.id+' '+e.className+' '+e.getAttribute('data-testid'))).slice(0,20).map(e=>({tag:e.tagName,id:e.id,classes:String(e.className).slice(0,150),testId:e.getAttribute('data-testid'),textLength:(e.textContent||'').length})),
+    containsAboutJob:/about the job/i.test(main?.textContent||''),textLength:(main?.textContent||'').length};
+  });
+  console.log('[posting-capture-diagnostic] '+JSON.stringify(diagnostic));
+  throw Error('Full job description unavailable; PDF capture blocked');
+ }
  const expand=page.locator('.jobs-description button,.jobs-description__container button,.description__text button').filter({hasText:/show more|see more/i}).first();
  if(await expand.isVisible().catch(()=>false))await expand.click({timeout:3000});
  // textContent includes collapsed original text; printing LinkedIn's scroll containers clips it.
