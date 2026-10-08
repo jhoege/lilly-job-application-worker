@@ -23,6 +23,7 @@ test('actual user commands route to search instead of tracker or tasks',()=>{
 });
 test('remote search applies LinkedIn remote filter; defaults also search Madison',()=>{
  const urls=searchUrls(parseCommand('JOB SEARCH VP of Operations remote'));
+ assert.ok(urls.every(q=>new URL(q.url).searchParams.get('f_AL')==='true'));
  assert.equal(urls.length,1);assert.equal(new URL(urls[0].url).searchParams.get('f_WT'),'2');
  const both=searchUrls(parseCommand('JOB SEARCH VP of Operations'));
  assert.equal(both.length,2);assert.equal(new URL(both[0].url).searchParams.get('location'),'Madison, Wisconsin');
@@ -30,6 +31,7 @@ test('remote search applies LinkedIn remote filter; defaults also search Madison
 test('search results enforce role, employer, location and salary; unknown salary stays unknown',()=>{
  const base={title:'VP of Operations',company:'Example',location:'United States (Remote)',remoteSearch:true,salaryText:'$150,000 - $200,000 per year'};
  assert.equal(evaluateSearchCandidate(base,'VP of Operations').eligible,true);
+ assert.equal(evaluateSearchCandidate({...base,easyApply:false},'VP of Operations').reason,'easy_apply_required');
  for(const change of [{company:'EVO Tech'},{company:'Lumino'},{location:'Chicago (Hybrid)'},{title:'Director of Operations'},{salaryText:'$80,000–$110,000 per year'}])assert.equal(evaluateSearchCandidate({...base,...change},'VP of Operations').eligible,false);
  const unknown=evaluateSearchCandidate({...base,salaryText:'Competitive pay'},'VP of Operations');assert.equal(unknown.salary,null);assert.equal(unknown.qualification,'salary_not_disclosed');
  assert.equal(evaluateSearchCandidate({...base,location:'Middleton, WI',remoteSearch:false},'VP of Operations').eligible,true);
@@ -79,3 +81,4 @@ test('worker acknowledges real retries, deduplicates inbound requests, persists 
  assert.equal(await fn('ANSWER Qabc-1 Yes, I can','SM22222222',{}),'Qabc-1: Yes, I can');
  assert.ok([...memory.values()].some(x=>JSON.parse(x).SM11111111?.status==='completed'));
 });
+

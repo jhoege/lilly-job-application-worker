@@ -1,9 +1,10 @@
 import {annualSalaryRange,excludedEmployer,QUALIFICATION_TARGET} from './job-policy.js';
 export function searchUrls(command){
  const queries=command.mode==='remote'?[{location:'United States',remote:true}]:[{location:'Madison, Wisconsin',remote:false},{location:'United States',remote:true}];
- return queries.map(q=>{const u=new URL('https://www.linkedin.com/jobs/search/');u.searchParams.set('keywords',command.role);u.searchParams.set('location',q.location);u.searchParams.set('f_TPR','r604800');if(q.remote)u.searchParams.set('f_WT','2');else u.searchParams.set('distance','25');return {url:u.href,...q};});
+ return queries.map(q=>{const u=new URL('https://www.linkedin.com/jobs/search/');u.searchParams.set('keywords',command.role);u.searchParams.set('location',q.location);u.searchParams.set('f_TPR','r604800');u.searchParams.set('f_AL','true');if(q.remote)u.searchParams.set('f_WT','2');else u.searchParams.set('distance','25');return {url:u.href,...q};});
 }
 export function evaluateSearchCandidate(job,role){
+ if(job.easyApply===false)return {eligible:false,reason:'easy_apply_required'};
  if(excludedEmployer(job.company))return {eligible:false,reason:'excluded_employer'};
  const title=String(job.title||'');
  if(!/\b(?:vp|vice president|director|head)\b/i.test(title))return {eligible:false,reason:'seniority'};
@@ -53,6 +54,9 @@ export async function searchJobs(context,command){
      const text=await details.locator('main').innerText({timeout:4000}).catch(()=>'');
      if(/no longer accepting applications/i.test(text))continue;
      if(/\/login|\/checkpoint|\/authwall/.test(details.url())){issues.push('Posting details require sign-in');continue;}
+     const easy=details.getByRole('button',{name:/Easy Apply/i}).first();
+     job.easyApply=await easy.waitFor({state:'visible',timeout:4000}).then(()=>true).catch(()=>false);
+     if(!job.easyApply)continue;
      job.salaryText=text||job.salaryText;
      check=evaluateSearchCandidate(job,command.role);
      if(check.eligible)results.push({...job,...check});
@@ -66,6 +70,7 @@ export async function searchJobs(context,command){
  }
  results.sort((a,b)=>Number(!!b.salary)-Number(!!a.salary)||Number(a.remoteSearch)-Number(b.remoteSearch));
  const lines=results.slice(0,4).map((j,i)=>`${i+1}) ${j.title.slice(0,85)} | ${j.company.slice(0,45)} | ${j.location.slice(0,60)} | ${j.salary?'$'+j.salary.min.toLocaleString('en-US')+'–$'+j.salary.max.toLocaleString('en-US'):'salary undisclosed'} ${j.url}`);
- const reply=lines.length?`Lilly search: ${command.role}. Madison area / fully remote; $130K qualification target.\n${lines.join('\n')}\nUndisclosed salaries need review. No applications submitted.`:`Lilly search: No verified matches for ${command.role} were returned. ${[...new Set(issues)].join('; ')||'No postings met role, location and disclosed salary criteria'}. No applications submitted.`;
+ const reply=lines.length?`Lilly search: ${command.role}. Easy Apply only; Madison area / fully remote; $130K qualification target.\n${lines.join('\n')}\nUndisclosed salaries need review. No applications submitted.`:`Lilly search: No verified Easy Apply matches for ${command.role} were returned. ${[...new Set(issues)].join('; ')||'No postings met application method, role, location and salary criteria'}. No applications submitted.`;
  return {reply:reply.slice(0,1500),results,issues:[...new Set(issues)]};
 }
+

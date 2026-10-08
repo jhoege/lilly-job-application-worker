@@ -10,6 +10,7 @@ import { handleSmsCommand } from './sms-operations.js';
 import {archivePosting} from './posting-archive.js';
 import {driveOAuth} from './drive-oauth.js';
 import {processSearchBatch} from './search-batch.js';
+import {diagnoseApply} from './diagnose-apply.js';
 
 const app = express();
 app.get('/integrations/google-drive/callback', driveOAuth.callback);
@@ -88,6 +89,15 @@ async function initializeBrowser() {
     browserReady = true;
     browserError = null;
     console.log(`[browser] Chromium ready; profile=${profilePath}; testMode=${testMode}`);
+    const diagnosticVersion=process.env.APPLICATION_LAYOUT_DIAGNOSTIC_VERSION||'';
+    if(/^layout-v\d+$/.test(diagnosticVersion)){
+      const record='/data/'+diagnosticVersion+'-result.json';
+      if(!fs.existsSync(record))void (async()=>{
+        let result;try{result=await diagnoseApply(browserContext);}catch(e){result={error:String(e.message).slice(0,160)};}
+        fs.writeFileSync(record,JSON.stringify(result),{mode:0o600});
+        console.log('[apply-layout-diagnostic] '+JSON.stringify(result));
+      })();
+    }
     const batchVersion=process.env.APPLICATION_BATCH_VERSION||'';
     if(/^batch-\d{8}-v\d+$/.test(batchVersion)){
       const record='/data/'+batchVersion+'-result.json';
