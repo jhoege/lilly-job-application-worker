@@ -163,6 +163,16 @@ async function routeMessage(body) {
   return 'Request received but not supported by text yet. Text HELP for available commands.';
 }
 
+// Authenticated readiness check: reports missing configuration names, never secret values.
+app.get('/internal/job-alert-status',(req,res)=>{
+ const secret=process.env.JOB_ALERT_SHARED_SECRET||'';
+ const supplied=String(req.get('authorization')||'').replace(/^Bearer /i,'');
+ if(!secret||!requireSafeEqual(supplied,secret))return res.sendStatus(403);
+ const required=['TWILIO_ACCOUNT_SID','TWILIO_FROM_PHONE','TWILIO_AUTH_TOKEN','ALLOWED_PHONE'];
+ const missing=required.filter(name=>!process.env[name]);
+ res.json({ready:missing.length===0,missing});
+});
+
 // Outbound job-question notices use a separate, secret-protected endpoint.
 app.post('/internal/job-question-alert', express.json({limit:'4kb'}), async(req,res)=>{
  const secret=process.env.JOB_ALERT_SHARED_SECRET;
