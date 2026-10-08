@@ -91,8 +91,8 @@ async function fieldsOnPage(page){
     !!wrapper?.querySelector('label .visually-hidden, .fb-dash-form-element__label .visually-hidden')||
     /[*]\s*$/.test(el.labels?.[0]?.innerText||'')||/[*]\s*$/.test(fieldset?.querySelector('legend')?.innerText||'')||((el.type==='radio'||el.type==='checkbox')&&/[*]/.test(questionText));
    const filled=el.type==='radio'
-    ? !![...dialog.querySelectorAll('input[type="radio"]')].find(other=>other.name===el.name&&other.checked)
-    : el.type==='checkbox' ? el.checked
+    ? !![...dialog.querySelectorAll('input[type="radio"]')].find(other=>other.name===el.name&&(other.checked||other.closest('[role=radio]')?.getAttribute('aria-checked')==='true'))
+    : el.type==='checkbox' ? el.checked||el.closest('[role=checkbox]')?.getAttribute('aria-checked')==='true'
     : el.tagName==='SELECT' ? !!el.value&&!/^(select|choose|please select)$/i.test(el.selectedOptions?.[0]?.textContent?.trim()||'')
     : el.type==='file' ? !!el.files?.length
     : !!String(el.value||'').trim();
@@ -437,7 +437,7 @@ async function advanceForm(page,button){
 }
 
 async function checkNativeChoice(page,input){
- if(await input.isChecked())return;
+ if(await input.evaluate(n=>n.checked||n.closest('[role=radio],[role=checkbox]')?.getAttribute('aria-checked')==='true',null,{timeout:1500}))return;
  const meta=await input.evaluate(n=>{
   const key=n.id||'choice-'+Math.random().toString(36).slice(2);
   let text=n.getAttribute('aria-label')||n.labels?.[0]?.innerText||'',wrapper=null,scope=null;
@@ -462,6 +462,6 @@ async function checkNativeChoice(page,input){
  }
  if(!clicked&&meta.wrapper){await page.locator(FORM_SELECTOR+' [data-lilly-choice-for='+JSON.stringify(meta.key)+']').click({timeout:4000});clicked=true;}
  if(!clicked)await input.check({timeout:2500});
- const checked=await page.waitForFunction(id=>!!document.getElementById(id)?.checked,meta.id,{timeout:2500}).then(()=>true).catch(()=>false);
- if(!checked){const error=Error('Approved visible '+meta.text+' choice did not select its native input');error.nativeChoice=meta;throw error;}
+ const checked=await page.waitForFunction(id=>{const n=document.getElementById(id);return n&&(n.checked||n.closest('[role=radio],[role=checkbox]')?.getAttribute('aria-checked')==='true');},meta.id,{timeout:2500}).then(()=>true).catch(()=>false);
+ if(!checked){meta.after=await page.evaluate(id=>{const n=document.getElementById(id);return n?{checked:n.checked,role:n.closest('[role=radio],[role=checkbox]')?.outerHTML?.slice(0,2000)}:null;},meta.id);const error=Error('Approved visible '+meta.text+' choice did not select its control');error.nativeChoice=meta;throw error;}
 }
