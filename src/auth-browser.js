@@ -5,6 +5,7 @@ import { startTriage,getTriageStatus,cancelTriage } from './queue-triage.js';
 import { pendingQuestionCount,readSubmittedJobIds } from './google-answers.js';
 import { batchInspect, inspectForm, salaryRequest } from './application-support.js';
 import express from 'express';
+import {archivePosting} from './posting-archive.js';
 import { loadCandidateQueue, inspectCandidate } from './job-inspector.js';
 
 const SESSION_MS = 20 * 60 * 1000;
@@ -27,6 +28,8 @@ $('pendingcheck').onclick=()=>run(async()=>{const j=await api('/pendingcheck');$
 $('driveconnect').onclick=async()=>{try{const j=await api('/drive/start');location.assign(j.authorizationUrl)}catch(e){$('drivemessage').textContent=e.message}};
 $('drivefolder').onclick=()=>{location.assign('/auth-browser/drive/folder')};
 $('drivestatus').onclick=async()=>{try{const j=await api('/drive/status');$('drivemessage').textContent=j.archiveReady?'Archive storage is ready':(j.reason||j.error||'Archive folder authorization is still needed')}catch(e){$('drivemessage').textContent=e.message}};
+const archiveTest=document.createElement('button');archiveTest.textContent='Test posting PDF upload';$('drivestatus').after(archiveTest);
+archiveTest.onclick=async()=>{archiveTest.disabled=true;$('drivemessage').textContent='Testing PDF capture and Drive upload; no application will be submitted.';try{const j=await api('/drive/archive-test');$('drivemessage').textContent=j.ok?'Posting PDF uploaded and tracker updated.':('Archive test failed: '+j.reason);if(j.ok&&j.url){const link=document.createElement('a');link.href=j.url;link.textContent=' Open test PDF';link.target='_blank';link.rel='noopener';$('drivemessage').append(link)}}catch(e){$('drivemessage').textContent=e.message}finally{archiveTest.disabled=false}};
 const driveResult=new URLSearchParams(location.search).get('drive'); if(driveResult){$('drivemessage').textContent=driveResult==='connected'?'Google authorization saved. Unlock and check archive storage.':'Google connection was not completed; unlock and try again';history.replaceState(null,'','/auth-browser')};
 $('googlecheck').onclick=()=>run(async()=>{const j=await api('/googlecheck');$('inspection').textContent=JSON.stringify(j,null,2)});
 async function refreshTriageStatus(){
@@ -110,6 +113,23 @@ export function mountAuthBrowser(app, getContext, checkAnswerConnector) {
   router.get('/drive/folder',authorized,drivePickerPage);
   router.post('/drive/picker-config',authorized,driveOAuth.pickerConfig);
   router.post('/drive/confirm-folder',authorized,driveOAuth.confirmFolder);
+  router.post('/drive/archive-test',authorized,async(_req,res)=>{
+    const context=getContext();
+    if(!context)return res.status(503).json({ok:false,reason:'Browser unavailable'});
+    let p;
+    try{
+      p=await context.newPage();
+      const job={id:'4470079202',url:'https://www.linkedin.com/jobs/view/4470079202/',company:'Lyra Health',title:'Director Operations - Provider Performance'};
+      await p.goto(job.url,{waitUntil:'domcontentloaded',timeout:25000});
+      if(/\/login|\/checkpoint|\/authwall/.test(p.url()))return res.status(422).json({ok:false,reason:'LinkedIn sign-in or verification required'});
+      await p.locator('h1').first().waitFor({state:'visible',timeout:8000});
+      const text=await p.locator('main').innerText({timeout:4000});
+      if(!/Lyra/i.test(text)||text.length<1000)return res.status(422).json({ok:false,reason:'Full posting could not be verified; refusing to archive an unrelated page'});
+      const result=await archivePosting(p,job);
+      res.status(result.ok?200:502).json(result);
+    }catch(e){res.status(502).json({ok:false,reason:String(e.message).slice(0,120)})}
+    finally{if(p)await p.close().catch(()=>{})}
+  });
   router.get('/screenshot',authorized,async(_req,res)=>{
     try{const p=await page();res.type('png').send(await p.screenshot({timeout:10000}))}catch{res.sendStatus(503)}
   });
@@ -147,4 +167,5 @@ export function mountAuthBrowser(app, getContext, checkAnswerConnector) {
   router.post('/close',authorized,(req,res)=>{const sid=(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(cookieName+'='))?.split('=')[1];if(sid)sessions.delete(sid);res.clearCookie(cookieName,{path:'/auth-browser'});res.json({ok:true})});
   app.use('/auth-browser',router);
 }
+
 
