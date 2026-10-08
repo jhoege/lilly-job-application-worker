@@ -74,3 +74,18 @@ export async function pendingQuestionCount(){
  const rows=(await response.json()).values||[];
  return rows.slice(1).filter(r=>String(r[3]||'').trim()&&String(r[6]||'').trim().toLowerCase()!=='approved').length;
 }
+
+export async function readSubmittedJobIds(){
+ const access=await token();
+ const range=encodeURIComponent("'Applications'!A1:G1000");
+ const response=await fetch('https://sheets.googleapis.com/v4/spreadsheets/'+SHEET_ID+'/values/'+range,{headers:{Authorization:'Bearer '+access},signal:AbortSignal.timeout(12000)});
+ if(!response.ok)throw Error('Application log read failed HTTP '+response.status);
+ const rows=(await response.json()).values||[];
+ const submitted=new Set();
+ for(const r of rows.slice(1)){
+  const id=String(r[0]||'').trim();
+  const status=String(r[4]||'').trim().toLowerCase();
+  if(/^\\d{8,12}$/.test(id)&&/submitted|applied|hired|interview/.test(status))submitted.add(id);
+ }
+ return submitted;
+}
