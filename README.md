@@ -24,3 +24,7 @@ No job applications are submitted by this initial version.
 ## Railway
 
 Deploy using the included Dockerfile. Attach one persistent volume at `/data` so browser session state can survive service restarts and redeployments.
+
+## Deployment validation (October 2026)
+
+The primary Railway service is `lilly-job-worker-app`; its persistent `/data` volume stores the authenticated browser profile. The duplicate `lilly-job-application-worker` service is not the production browser profile owner. Keep TEST_MODE enabled until a supervised application has been reviewed. This documentation update also verifies GitHub push-to-deploy propagation.
