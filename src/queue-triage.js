@@ -43,7 +43,7 @@ function advertisedSalaryFromText(text){
 }
 async function fieldsOnPage(page){
  return page.evaluate(()=>{
-  const dialog=document.querySelector('[role="dialog"], .jobs-easy-apply-modal, .artdeco-modal');
+  const dialog=document.querySelector('.jobs-easy-apply-modal');
   if(!dialog)return null;
   const fields=[...dialog.querySelectorAll('input,textarea,select')].filter(el=>{
    const style=window.getComputedStyle(el);
@@ -77,7 +77,7 @@ async function fieldsOnPage(page){
  });
 }
 async function saveDraftIfSupported(page){
- const dialog=page.locator('[role="dialog"]').first();
+ const dialog=page.locator('.jobs-easy-apply-modal').first();
  try{
   const save=dialog.getByRole('button',{name:/^save( application| draft)?$/i}).first();
   if(await save.isVisible({timeout:800}).catch(()=>false)){
@@ -117,7 +117,7 @@ const displayStatus={
  login_required:'Login required',closed:'Closed',
  external_application:'External application required',
  easy_apply_not_detected:'Easy Apply unavailable',
- form_unavailable:'Form unavailable',no_easy_apply:'Easy Apply unavailable',
+ form_unavailable:'Form unavailable',application_modal_not_found:'Application window not found',no_easy_apply:'Easy Apply unavailable',
  already_applied_logged:'Submitted verified',submitted_verified:'Submitted verified',
  cancelled:'Cancelled',requires_review:'Needs review'
 };
@@ -173,7 +173,10 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
      let easy=null;
      for(const selector of selectors){
       const candidate=page.locator(selector).first();
-      if(await candidate.isVisible({timeout:2000}).catch(()=>false)){easy=candidate;break}
+      if(await candidate.isVisible({timeout:2000}).catch(()=>false)){
+       const label=((await candidate.innerText().catch(()=>''))+' '+(await candidate.getAttribute('aria-label').catch(()=>''))).trim();
+       if(/easy apply/i.test(label)){easy=candidate;break}
+      }
      }
      if(!easy){
       const login=await page.locator('input[name="session_key"], input#username').count();
@@ -184,7 +187,11 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
      }
      setStage('opening_application');
      await easy.click({timeout:8000});
-     await page.locator('[role="dialog"], .jobs-easy-apply-modal, .artdeco-modal').first().waitFor({state:'visible',timeout:8000}).catch(()=>{});
+     const appModal=page.locator('.jobs-easy-apply-modal').first();
+     if(!await appModal.isVisible({timeout:9000}).catch(()=>false)){
+      const diagnostic=await page.evaluate(()=>[...document.querySelectorAll('[role="dialog"]')].map(d=>({className:String(d.className).slice(0,90),buttons:[...d.querySelectorAll('button')].map(b=>b.innerText.trim()).filter(Boolean).slice(0,8)})).slice(0,5));
+      results.push({jobId:job.id,status:'application_modal_not_found',diagnostic:JSON.stringify(diagnostic).slice(0,350)});continue;
+     }
      // The modal shell often renders before the LinkedIn application questions.
      // Wait for real form controls instead of treating the loading shell as an empty application.
      setStage('waiting_for_application_fields');
@@ -207,13 +214,13 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
        const answer=lookupAnswer(f.label,approved,advertisedSalary);
        // Only fill clearly labeled text-like fields. No guessed dropdown, radio, checkbox, file or identity answers.
        if(answer!==undefined&&f.label){
-        const input=page.locator('[role="dialog"] input:not([type="hidden"]), [role="dialog"] textarea, [role="dialog"] select').filter({visible:true}).nth(f.index);
+        const input=page.locator('.jobs-easy-apply-modal input:not([type="hidden"]), .jobs-easy-apply-modal textarea, .jobs-easy-apply-modal select').filter({visible:true}).nth(f.index);
         try{
          if(['text','email','tel','number','textarea'].includes(f.type)){
           await input.fill(String(answer),{timeout:2500});
          }else if(f.type==='radio'){
           const wanted=String(answer).trim().toLowerCase();
-          const group=page.locator('[role="dialog"] input[type="radio"]').filter({visible:true});
+          const group=page.locator('.jobs-easy-apply-modal input[type="radio"]').filter({visible:true});
           const names=await group.evaluateAll(nodes=>nodes.map(n=>({name:n.name,value:n.value,label:n.labels?.[0]?.innerText||''})));
           const selected=names.findIndex(x=>x.name===f.name&&(normalize(x.value)===wanted||normalize(x.label)===wanted));
           if(selected<0)throw Error('No exact approved radio choice');
@@ -229,7 +236,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
        diagnostic={page:step+1,visibleFields:fields.length,unfilledRequired:missing.length,reason:'required_answers_missing'};
        status='needs_answers';break;
       }
-      const dialog=page.locator('[role="dialog"]');
+      const dialog=page.locator('.jobs-easy-apply-modal');
       const review=dialog.getByRole('button',{name:/^(review|review application)$/i});
       const next=dialog.getByRole('button',{name:/^(next|continue|continue to next step)$/i});
       const submit=dialog.getByRole('button',{name:/^submit application$/i});
@@ -242,7 +249,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
         // Re-check submitted IDs immediately before submitting to avoid a stale queue.
         if((await readSubmittedJobIds()).has(job.id)){status='already_applied_logged';break}
         const validation=await page.evaluate(()=>{
-         const dialog=document.querySelector('[role="dialog"], .jobs-easy-apply-modal, .artdeco-modal');
+         const dialog=document.querySelector('.jobs-easy-apply-modal');
          if(!dialog)return {invalid:1,reason:'Application dialog missing'};
          const invalid=[...dialog.querySelectorAll('input,textarea,select')].filter(el=>el.getClientRects().length&&
           (el.getAttribute('aria-invalid')==='true'||(el.required&&!el.checkValidity())));
