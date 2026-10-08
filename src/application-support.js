@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import {MINIMUM_REQUEST,RANGE_FRACTION} from './job-policy.js';
 
 const queuePath=path.resolve('data/candidate-jobs-2026-10-07.json');
 export function getQueue(){
@@ -9,7 +10,7 @@ export function getQueue(){
 export function salaryRequest({min,max,market}={}){
  const lo=Number(min),hi=Number(max),m=Number(market);
  if(min!==undefined&&max!==undefined&&Number.isFinite(lo)&&Number.isFinite(hi)&&lo>=0&&hi>=lo)
-  return {amount:Math.max(120000,Math.round(lo+0.75*(hi-lo))),basis:'advertised_range'};
+  return {amount:Math.max(MINIMUM_REQUEST,Math.round(lo+RANGE_FRACTION*(hi-lo))),basis:'advertised_range'};
  if(market!==undefined&&Number.isFinite(m)&&m>0)
   return {amount:Math.max(120000,Math.round(m)),basis:'market_data'};
  return {amount:120000,basis:'no_reliable_data'};
@@ -48,3 +49,4 @@ export async function batchInspect(context,{limit=5}={}){
  }
  return {inspectionOnly:true,submitted:0,results};
 }
+

@@ -2,10 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {salaryRequest,getQueue} from '../src/application-support.js';
 
-test('75% of listed range, with $120k floor',()=>{
- assert.deepEqual(salaryRequest({min:100000,max:200000}),{amount:175000,basis:'advertised_range'});
- assert.deepEqual(salaryRequest({min:134000,max:184000}),{amount:171500,basis:'advertised_range'});
- assert.deepEqual(salaryRequest({min:160000,max:175000}),{amount:171250,basis:'advertised_range'});
+test('60% of listed range, with $120k floor',()=>{
+ assert.deepEqual(salaryRequest({min:100000,max:200000}),{amount:160000,basis:'advertised_range'});
+ assert.deepEqual(salaryRequest({min:134000,max:184000}),{amount:164000,basis:'advertised_range'});
+ assert.deepEqual(salaryRequest({min:160000,max:175000}),{amount:169000,basis:'advertised_range'});
  assert.deepEqual(salaryRequest({min:90000,max:110000}),{amount:120000,basis:'advertised_range'});
 });
 test('market salary and missing salary respect minimum',()=>{
@@ -23,3 +23,4 @@ test('already submitted or closed jobs are excluded before browser navigation',(
  assert.equal(jobs.some(j=>j.id==='4474499407'),false);
  assert.ok(jobs.some(j=>j.id==='4470079202'&&j.salaryRequest===171500));
 });
+

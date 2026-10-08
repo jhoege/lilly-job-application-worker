@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import express from 'express';
 import { GoogleAuth } from 'google-auth-library';
 import twilio from 'twilio';
+import {parseCommand,isJobCommand} from './commands.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -149,29 +150,38 @@ function summarizeTasks(tasks, mode) {
   return `${top.join(' ')}${more}`.slice(0, 1500);
 }
 
-async function jobsCommand(message){
+async function jobsCommand(message,requestId){
  const endpoint=process.env.JOB_WORKER_URL,secret=process.env.JOB_ALERT_SHARED_SECRET;
  if(!endpoint||!secret)return 'Jobs connector is not configured. Contact Lilly administrator.';
  const url=new URL('/internal/sms-command',endpoint);
  if(url.protocol!=='https:')throw Error('Jobs endpoint must be HTTPS');
- const response=await fetch(url,{method:'POST',headers:{Authorization:'Bearer '+secret,'Content-Type':'application/json'},body:JSON.stringify({message}),signal:AbortSignal.timeout(15000)});
+ const response=await fetch(url,{method:'POST',headers:{Authorization:'Bearer '+secret,'Content-Type':'application/json'},body:JSON.stringify({message,requestId}),signal:AbortSignal.timeout(10000)});
  const data=await response.json().catch(()=>({}));
  if(!response.ok)throw Error('Jobs connector HTTP '+response.status);
  return String(data.reply||'Jobs connector returned no response').slice(0,1400);
 }
 
-async function routeMessage(body) {
-  const n = String(body || '').trim().toLowerCase();
-  if (n === 'help') return 'Commands: HELP, STATUS, TASKS, PAST DUE, DUE TODAY, CALENDAR, BILLS, JOBS, JOBS SEARCH <role>, JOBS QUESTIONS, ANSWER QID text.';
-  if (n === 'status') return 'Lilly SMS gateway is online and your number is authorized.';
-  if (n === 'hello' || n === 'hi' || n.startsWith('hello lilly')) return 'Hello. Text HELP for available commands.';
-  if (n.includes('past due')) return summarizeTasks(await fetchTasks(), 'past-due');
-  if (n.includes('due today') || n.includes('what do i have due today')) return summarizeTasks(await fetchTasks(), 'due-today');
-  if (n === 'tasks' || n.includes('task')) return summarizeTasks(await fetchTasks(), 'all');
-  if (n.includes('calendar') || n.includes('schedule')) return 'Calendar command recognized. Calendar connector is not yet linked to this gateway.';
-  if (n.includes('bill')) return 'Bills command recognized. Bills connector is not yet linked to this gateway.';
-  if (n.startsWith('job') || n.startsWith('answer ')) return jobsCommand(String(body||''));
-  return 'Request received but not supported by text yet. Text HELP for available commands.';
+async function routeMessage(body,requestId) {
+  const cmd=parseCommand(body);
+  if(isJobCommand(cmd))return jobsCommand(String(body||''),requestId);
+  if(cmd.kind==='help')return 'Commands: JOB SEARCH <role>, JOBS RETRY, JOBS STATUS, JOBS DETAILS, JOBS QUESTIONS, ANSWER <ID> <answer>, TASKS, PAST DUE, DUE TODAY, STATUS. Natural job search requests are supported. Calendar/email/briefing require a live assistant bridge.';
+  if(cmd.kind==='status')return 'Lilly SMS is online. Jobs worker '+(process.env.JOB_WORKER_URL&&process.env.JOB_ALERT_SHARED_SECRET?'configured':'not configured')+'. Calendar/email bridge '+(process.env.PERSONAL_ASSISTANT_URL&&process.env.PERSONAL_ASSISTANT_SECRET?'configured':'not connected')+'. JOBS STATUS checks processing.';
+  if(cmd.kind==='hello'||cmd.kind==='hi')return 'Hello. Text HELP for available commands.';
+  if(cmd.kind==='past_due')return summarizeTasks(await fetchTasks(),'past-due');
+  if(cmd.kind==='due_today')return summarizeTasks(await fetchTasks(),'due-today');
+  if(cmd.kind==='tasks')return summarizeTasks(await fetchTasks(),'all');
+  if(['calendar','email','briefing'].includes(cmd.kind)) {
+   const endpoint=process.env.PERSONAL_ASSISTANT_URL,secret=process.env.PERSONAL_ASSISTANT_SECRET;
+   if(!endpoint||!secret)return 'Lilly '+cmd.kind+': SMS access to your connected accounts is not available yet. The calendar test was a fixed test message, not a live calendar read. No account changes made.';
+   const url=new URL('/internal/sms-command',endpoint);
+   if(url.protocol!=='https:')throw Error('Assistant bridge requires HTTPS');
+   const response=await fetch(url,{method:'POST',headers:{Authorization:'Bearer '+secret,'Content-Type':'application/json'},body:JSON.stringify({message:String(body||''),requestId}),signal:AbortSignal.timeout(10000)});
+   const data=await response.json().catch(()=>({}));
+   if(!response.ok)throw Error('Assistant bridge unavailable');
+   return String(data.reply||'Assistant bridge returned no result').slice(0,1500);
+  }
+  if(cmd.kind==='bills')return 'Bills data is not connected to SMS. No changes made.';
+  return 'Command not recognized. Text HELP, or JOB SEARCH VP of Operations.';
 }
 
 // Authenticated readiness check: reports missing configuration names, never secret values.
@@ -184,23 +194,24 @@ app.get('/internal/job-alert-status',(req,res)=>{
  res.json({ready:missing.length===0,missing});
 });
 
-// Fixed, one-time calendar SMS test. Never accepts arbitrary message text.
-app.post('/internal/calendar-test',express.json({limit:'1kb'}),async(req,res)=>{
- const secret=process.env.JOB_ALERT_SHARED_SECRET||'';
- const supplied=String(req.get('authorization')||'').replace(/^Bearer /i,'');
+// Worker results go only to the configured, authorized owner; never a caller-supplied recipient.
+const deliveredResults=new Map();
+app.post('/internal/job-result',express.json({limit:'8kb'}),async(req,res)=>{
+ const secret=process.env.JOB_ALERT_SHARED_SECRET||'',supplied=String(req.get('authorization')||'').replace(/^Bearer /i,'');
  if(!secret||!requireSafeEqual(supplied,secret))return res.sendStatus(403);
- if(req.body?.testId!=='calendar-2026-10-08')return res.sendStatus(400);
- if(!allowedPhone||!process.env.TWILIO_ACCOUNT_SID||!process.env.TWILIO_FROM_PHONE||!twilioAuthToken)return res.status(503).json({sent:false,reason:'sms_config_missing'});
- const body='Lilly calendar test - Thu Oct 8, 2026: Google Calendar: 1 event. Outlook: 1 event. Both show the same GAME 8 - JV2 @ Verona, 6:00-7:30 PM Central, Verona Area High School, 234 Wildcat Way. No other events found on either primary calendar.';
+ const id=String(req.body?.requestId||''),message=String(req.body?.message||'');
+ if(!/^[A-Za-z0-9_-]{8,80}$/.test(id)||!message||message.length>1600)return res.sendStatus(400);
+ if(deliveredResults.has(id))return res.json({sent:true,duplicate:true});
+ if(!allowedPhone||!process.env.TWILIO_ACCOUNT_SID||!process.env.TWILIO_FROM_PHONE||!twilioAuthToken)return res.status(503).json({sent:false});
+ // Reserve before awaiting Twilio to prevent concurrent duplicate callbacks.
+ deliveredResults.set(id,'sending');
  try{
-  const client=twilio(process.env.TWILIO_ACCOUNT_SID,twilioAuthToken);
-  const msg=await client.messages.create({to:allowedPhone,from:process.env.TWILIO_FROM_PHONE,body});
-  console.log('[calendar-test] accepted by Twilio; status='+msg.status);
-  return res.json({sent:true,providerStatus:msg.status,messageId:msg.sid});
- }catch(e){
-  console.error('[calendar-test] Twilio rejected message: code='+String(e.code||'unknown'));
-  return res.status(502).json({sent:false,providerCode:String(e.code||'unknown')});
- }
+  const result=await twilio(process.env.TWILIO_ACCOUNT_SID,twilioAuthToken).messages.create({to:allowedPhone,from:process.env.TWILIO_FROM_PHONE,body:message});
+  deliveredResults.set(id,'accepted');
+  if(deliveredResults.size>500)deliveredResults.delete(deliveredResults.keys().next().value);
+  console.log('[job-result] accepted status='+result.status);
+  return res.json({sent:true,providerStatus:result.status});
+ }catch(e){deliveredResults.delete(id);console.error('[job-result] provider rejected code='+String(e.code||'unknown'));return res.status(502).json({sent:false});}
 });
 
 // Outbound job-question notices use a separate, secret-protected endpoint.
@@ -224,7 +235,7 @@ function requireSafeEqual(a,b){
  return x.length===y.length&&crypto.timingSafeEqual(x,y);
 }
 
-app.get('/health', (_req, res) => res.status(200).send('OK'));
+app.get('/health', (_req, res) => res.status(200).json({status:'ok',release:'2026-10-08-sms-repair-v8'}));
 
 app.post('/twilio/incoming', async (req, res) => {
   if (!validateTwilio(req)) return res.status(401).send('Unauthorized');
@@ -233,7 +244,7 @@ app.post('/twilio/incoming', async (req, res) => {
   }
 
   try {
-    const reply = await routeMessage(req.body.Body || '');
+    const reply = await routeMessage(req.body.Body || '',req.body.MessageSid);
     return res.type('application/xml').status(200).send(twiml(reply));
   } catch (error) {
     console.error(`[router] ${error?.message || 'unknown error'}`);
@@ -244,3 +255,4 @@ app.post('/twilio/incoming', async (req, res) => {
 app.listen(port, '0.0.0.0', () => {
   console.log(`[server] lilly-sms-gateway listening on ${port}`);
 });
+

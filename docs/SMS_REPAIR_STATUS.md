@@ -1,0 +1,17 @@
+# Lilly SMS repair — October 8, 2026
+
+Commands share one parser: JOB/JOBS SEARCH, natural-language role searches, JOBS RETRY, JOBS STATUS, JOBS DETAILS, JOBS QUESTIONS and ANSWER. Searches/retries return an acknowledgment immediately, persist their request and result on the worker volume, and post the final result to the gateway's authenticated owner-only callback. Twilio MessageSid deduplicates repeated inbound deliveries. Failed result delivery remains visible through JOBS STATUS. Interrupted work is labeled interrupted after restart rather than silently rerun.
+
+Search checks Director/VP/Head seniority, requested role, excluded employers, local Madison-area location or explicit remote designation, posted salary ranges and closed postings. Remote queries use LinkedIn's remote filter. Salary undisclosed is labeled unknown; it is not represented as meeting a salary requirement. The qualification target recovered from user context is $130,000. Salary requests use the later instruction: 60% through a listed range, with a $120,000 request floor.
+
+Retries load original jobs, saved jobs and pending application-ledger jobs, skip closed/excluded/submitted/uncertain submissions, bypass retry cooldown once and use the existing single-run application engine. Detail responses list blockers instead of repeating counts. Unknown required answers remain exceptions, never invented answers.
+
+Submission protection writes an uncertain status before attempting Submit, waits for confirmation, and preserves the uncertain status if a timeout or crash occurs. An independently verified confirmation can promote that status to Submitted verified. Historical confirmed submissions are protected.
+
+Calendar/email/briefing connections in ChatGPT are not automatically credentials available to the Railway service. No deployable account bridge was found in either Railway project, source repository or the retrieved assistant setup and calendar-sync records. The fixed calendar test endpoint and startup send have been removed from the active service. STATUS and calendar/email requests state this limitation accurately. A future bridge must supply PERSONAL_ASSISTANT_URL and PERSONAL_ASSISTANT_SECRET and implement authenticated POST /internal/sms-command with a JSON reply; no secret values should be copied into source.
+
+Validation: npm test covers salary policy, original queue exclusions, actual screenshot commands, natural-language routing precedence, remote filter, search result qualification, uncertain status distinction, request IDs, asynchronous retry acknowledgment, duplicate delivery, persisted operation results, failed SMS delivery, and answer text preservation. Syntax validation runs on all changed JavaScript. Production acceptance requires successful worker/gateway deployments, live readiness and a search pilot. Twilio acceptance is not a device-delivery confirmation.
+
+SMS_REPAIR_PILOT_VERSION=v8 runs one read-only VP of Operations search after browser startup. The persistent repair-v8-vp-search request ID prevents repetition across deployments. The pilot does not apply to search results. Live application processing retains the user's existing AUTO_TRIAGE_ENABLED / AUTO_SUBMIT_ENABLED / TEST_MODE configuration.
+
+Still requires external access: connect the live calendar/email bridge; upload the current resume to Indeed through an authorized signed-in browser; and resolve any LinkedIn sign-in walls or unsupported external employer forms actually encountered. These are not reported as completed by code changes.

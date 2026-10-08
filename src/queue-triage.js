@@ -1,5 +1,6 @@
 import {getQueue,salaryRequest} from './application-support.js';
 import {readApprovedAnswers,appendUnknownQuestions,readSubmittedJobIds,logVerifiedLinkedInApplication,upsertApplicationStatus} from './google-answers.js';
+import {excludedEmployer} from './job-policy.js';
 let running=false;
 let cancelRequested=false;
 let activePage=null;
@@ -103,7 +104,7 @@ async function saveDraftIfSupported(page){
   if(await dismiss.isVisible({timeout:800}).catch(()=>false)){
    await dismiss.click({timeout:3000});
    const confirmation=page.getByRole('dialog').getByRole('button',{name:/^save( application| draft)?$/i}).last();
-   if(await confirmation.isVisible({timeout:1800}).catch(()=>false)){
+   if(await confirmation.waitFor({state:"visible",timeout:1800}).then(()=>true).catch(()=>false)){
     await confirmation.click({timeout:3000});
     return {saved:true,reason:'LinkedIn Save draft confirmation clicked'};
    }
@@ -158,6 +159,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
     let page=null;
     let watchdog=null;
     let timedOut=false;
+    let submissionAttempted=false;
     try{
      page=await context.newPage();
      activePage=page;
@@ -169,6 +171,10 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
      await page.waitForTimeout(1200);
      setStage('checking_linkedin_application_status');
      const currentJobStatus=await page.locator('main').first().innerText({timeout:4000}).catch(()=>'');
+     const liveCompany=await page.locator('.job-details-jobs-unified-top-card__company-name,.jobs-unified-top-card__company-name,.topcard__org-name-link').first().innerText({timeout:1500}).catch(()=>'');
+     if(liveCompany)job.company=liveCompany.trim();
+     if(excludedEmployer(job.company)){results.push({jobId:job.id,status:'excluded_employer',reason:'User excluded this employer'});continue;}
+     if(!job.company){results.push({jobId:job.id,status:'needs_manual_review',reason:'Employer could not be verified; application not opened'});continue;}
      if(/application status[\s\S]{0,100}application submitted/i.test(currentJobStatus)){
       setStage('recording_verified_application');
       const logged=await logVerifiedLinkedInApplication(job);
@@ -188,7 +194,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
      let easy=null;
      for(const selector of selectors){
       const candidate=page.locator(selector).first();
-      if(await candidate.isVisible({timeout:2000}).catch(()=>false)){
+      if(await candidate.waitFor({state:"visible",timeout:2000}).then(()=>true).catch(()=>false)){
        const label=((await candidate.innerText().catch(()=>''))+' '+(await candidate.getAttribute('aria-label').catch(()=>''))).trim();
        if(/easy apply/i.test(label)){easy=candidate;break}
       }
@@ -287,9 +293,11 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
         if(validation.invalid>0){status='submission_blocked';diagnostic={...diagnostic,reason:'Unresolved invalid required fields',invalidFields:validation.invalid};break}
         if(!await submit.isEnabled()) {status='submission_blocked';diagnostic={...diagnostic,reason:'Submit disabled'};break}
         setStage('submitting_completed_application');
+        submissionAttempted=true;
+        await upsertApplicationStatus(job,'Submission unverified - Verify before retry','Submission action about to be attempted; verification required before any retry');
         await submit.click({timeout:8000});
         const confirmation=page.getByText(/your application was sent to|application submitted successfully|application was submitted/i).first();
-        if(await confirmation.isVisible({timeout:12000}).catch(()=>false)){
+        if(await confirmation.waitFor({state:'visible',timeout:12000}).then(()=>true).catch(()=>false)){
          setStage('logging_verified_submission');
          const logged=await logVerifiedLinkedInApplication(job);
          submittedIds.add(job.id);
@@ -331,8 +339,8 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       jobSaved=await saveJobForLater(page,job.source);
      }
      results.push({jobId:job.id,status,stepsCompleted:steps,unknownQuestions:unknown.length,logged:added,diagnostic,draftSaved:draft.saved,jobSaved:jobSaved.saved,draftNote:draft.reason,saveNote:jobSaved.reason,submitted:status==='submitted_verified'});
-     // This triage never presses Submit. Closing this isolated page abandons the form.
-    }catch(e){results.push({jobId:job.id,status:cancelRequested?'cancelled':timedOut?'job_timeout':'technical_failure',stage,reason:String(e.message).slice(0,120)})}
+     // Submission occurs only with standing authorization and observed confirmation.
+    }catch(e){results.push({jobId:job.id,status:submissionAttempted?'submission_unverified':cancelRequested?'cancelled':timedOut?'job_timeout':'technical_failure',stage,reason:String(e.message).slice(0,120)})}
     finally{
      if(watchdog)clearTimeout(watchdog);
      activePage=null;
@@ -354,3 +362,4 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
   return {mode:process.env.AUTO_SUBMIT_ENABLED==='true'&&process.env.TEST_MODE==='false'?'guarded_submission':'safe_multistep_triage',submitted:results.filter(x=>x.submitted).length,results};
  }finally{running=false;progress.running=false;progress.currentJob=null;setStage(cancelRequested?'cancelled':'finished')}
 }
+

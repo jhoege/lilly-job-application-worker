@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import {verifiedSubmission,uncertainSubmission} from './job-policy.js';
 
 const SHEET_ID='1g4eUIwU1-zyZWuNyMCxradZLhtDnjBcTS34DkxUcItg';
 const TOKEN_URL='https://oauth2.googleapis.com/token';
@@ -28,7 +29,7 @@ export async function readApprovedAnswers(){
  const range=encodeURIComponent("'Approved Answers'!A1:F500");
  const url='https://sheets.googleapis.com/v4/spreadsheets/'+SHEET_ID+'/values/'+range;
  const response=await fetch(url,{headers:{Authorization:'Bearer '+access},signal:AbortSignal.timeout(12000)});
- if(!response.ok){const body=await response.json().catch(()=>({}));const reason=body.error?.errors?.[0]?.reason||body.error?.status||'unknown';const msg=String(body.error?.message||'').replace(/[\\r\\n]/g,' ').slice(0,180);throw Error('Google Sheets read failed: HTTP '+response.status+'; reason='+reason+'; detail='+msg);}
+ if(!response.ok){const body=await response.json().catch(()=>({}));const reason=body.error?.errors?.[0]?.reason||body.error?.status||'unknown';throw Error('Google Sheets read failed: HTTP '+response.status+'; reason='+reason);}
  const data=await response.json();
  const rows=(data.values||[]).slice(1);
  const approved=rows.filter(row=>String(row[4]||'').trim().toLowerCase()==='approved').map(row=>({id:row[0],category:row[1],question:row[2],answer:row[3]}));
@@ -100,7 +101,7 @@ export async function readSubmittedJobIds(){
  for(const r of rows.slice(1)){
   const id=String(r[0]||'').trim();
   const status=String(r[4]||'').trim().toLowerCase();
-  if(/^[0-9]{8,12}$/.test(id)&&/submitted|applied|hired|interview/.test(status))submitted.add(id);
+  if(/^[0-9]{8,12}$/.test(id)&&(verifiedSubmission(status)||uncertainSubmission(status)))submitted.add(id);
  }
  return submitted;
 }
@@ -108,8 +109,8 @@ export async function readSubmittedJobIds(){
 export async function logVerifiedLinkedInApplication(job){
  const id=String(job?.id||'');
  if(!/^[0-9]{8,12}$/.test(id))throw Error('Invalid LinkedIn job ID');
- const existing=await readSubmittedJobIds();
- if(existing.has(id))return {added:false,reason:'already_logged'};
+ const existing=await readApplicationLedger();
+ if(existing.some(row=>row.id===id&&verifiedSubmission(row.status)))return {added:false,reason:'already_logged'};
  const result=await upsertApplicationStatus(job,'Submitted verified','LinkedIn confirmation shown after application submission');
  return {added:result.updated};
 }
@@ -124,7 +125,7 @@ async function ledgerRows(access){
 export async function readApplicationLedger(){
  const access=await token();
  const rows=await ledgerRows(access);
- return rows.slice(1).filter(r=>r[0]).map(r=>({id:String(r[0]),status:r[4]||'',reason:r[9]||'',source:r[10]||''}));
+ return rows.slice(1).filter(r=>r[0]).map(r=>({id:String(r[0]),company:r[2]||'',title:r[3]||'',status:r[4]||'',salaryRequest:r[5]||null,url:r[8]||'',reason:r[9]||'',source:r[10]||''}));
 }
 export async function upsertApplicationStatus(job,status,reason='',extra={}){
  const id=String(job?.id||'').trim();
@@ -133,7 +134,7 @@ export async function upsertApplicationStatus(job,status,reason='',extra={}){
  const rows=await ledgerRows(access);
  const index=rows.findIndex((r,i)=>i>0&&String(r[0]||'').trim()===id);
  const existing=index>0?rows[index]:null;
- if(existing&&/submitted|applied|hired|interview/i.test(existing[4]||''))
+ if(existing&&(verifiedSubmission(existing[4])||uncertainSubmission(existing[4])&&!verifiedSubmission(status)))
   return {updated:false,reason:'already_submitted'};
  const now=new Date().toISOString();
  const normalizedStatus=String(status||'Needs review').slice(0,90);
@@ -159,6 +160,10 @@ export async function smsJobSummary(command='jobs'){
  const qr=await fetch(SHEETS_BASE+qrange,{headers:{Authorization:'Bearer '+access},signal:AbortSignal.timeout(12000)});
  if(!qr.ok)throw Error('Question bank unavailable');
  const questions=((await qr.json()).values||[]).slice(1).filter(r=>String(r[3]||'').trim()&&String(r[6]||'').trim().toLowerCase()!=='approved');
+ if(/details/i.test(command)){
+  const pending=applications.filter(r=>!verifiedSubmission(r[4])&&!/closed/i.test(r[4]||''));
+  return 'Lilly Jobs details: '+pending.length+' pending. '+pending.slice(0,4).map(r=>String(r[0])+': '+String(r[2]||'')+' '+String(r[3]||'').slice(0,70)+' — '+String(r[4]||'Needs review')+'; '+String(r[9]||'No blocker detail recorded').slice(0,120)).join(' | ')+' Text JOBS RETRY to start a new attempt; JOBS STATUS for progress.';
+ }
  if(/question/i.test(command)){
   if(!questions.length)return 'Lilly Jobs: No unanswered screening questions in the tracker.';
   return 'Lilly Jobs: '+questions.length+' pending. '+questions.slice(0,3).map(r=>String(r[0])+': '+String(r[3]).slice(0,110)).join(' | ')+' Reply ANSWER <ID> <your answer> to record one.';
@@ -179,3 +184,4 @@ export async function smsRecordAnswer(id,answer){
  if(!write.ok)throw Error('Unable to save answer');
  return 'Lilly Jobs: Answer saved and approved for '+id+'. The job worker can reuse it during its next processing attempt.';
 }
+
