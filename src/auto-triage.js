@@ -7,7 +7,7 @@ import {getQueue} from './application-support.js';
 import {triageQueue} from './queue-triage.js';
 const statePath=process.env.TRIAGE_STATE_FILE||'/data/job-triage-state.json';
 let busy=false;
-const engineVersion='2026-10-08-dynamic-modal-v6';
+const engineVersion='2026-10-08-diagnostics-v7';
 export function startAutoTriage(getContext){
  if(process.env.AUTO_TRIAGE_ENABLED!=='true'){console.log('[auto-triage] disabled until supervised pilot passes');return}
  const run=async()=>{
