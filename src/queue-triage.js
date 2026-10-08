@@ -1,5 +1,5 @@
 import {getQueue} from './application-support.js';
-import {readApprovedAnswers,appendUnknownQuestions} from './google-answers.js';
+import {readApprovedAnswers,appendUnknownQuestions,readSubmittedJobIds} from './google-answers.js';
 let running=false;
 const normalize=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 const aliases=new Map([
@@ -39,11 +39,12 @@ export async function triageQueue(context,{limit=5,offset=0}={}){
  running=true;
  const results=[];
  try{
-  const approved=await readApprovedAnswers();
+  const [approved,submittedIds]=await Promise.all([readApprovedAnswers(),readSubmittedJobIds()]);
   const jobs=getQueue().filter(x=>!x.submitted&&x.status!=='closed_not_accepting_applications').slice(Math.max(0,Number(offset)||0),Math.max(0,Number(offset)||0)+Math.max(1,Math.min(10,Number(limit)||5)));
   const page=await context.newPage();
   try{
    for(const job of jobs){
+    if(submittedIds.has(job.id)){results.push({jobId:job.id,status:'skipped_already_logged',visited:false});continue;}
     let stage='navigation';
     try{
      await page.goto(job.url,{waitUntil:'domcontentloaded',timeout:25000});
