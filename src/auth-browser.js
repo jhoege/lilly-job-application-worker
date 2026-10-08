@@ -116,7 +116,7 @@ export function mountAuthBrowser(app, getContext, checkAnswerConnector) {
       sms=r.ok?await r.json():{ready:false,missing:['gateway unavailable: HTTP '+r.status]};
      }catch{sms={ready:false,missing:['gateway connection failed']}}
     }
-    res.json({pendingQuestions:count,smsReady:!!sms.ready,smsMissing:sms.missing||[]});
+    res.json({pendingQuestions:count,smsReady:!!sms.ready,smsMissing:sms.missing||[],autoTriageEnabled:process.env.AUTO_TRIAGE_ENABLED==='true',autoSubmissionEnabled:process.env.AUTO_SUBMIT_ENABLED==='true'&&process.env.TEST_MODE==='false',testMode:process.env.TEST_MODE!=='false'});
    }catch(e){res.status(503).json({error:String(e.message).slice(0,140)})}
   });
   router.post('/googlecheck',authorized,async(_req,res)=>{try{res.json(await checkAnswerConnector())}catch(e){res.status(503).json({connected:false,error:String(e.message).slice(0,140)})}});
