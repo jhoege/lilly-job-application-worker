@@ -108,7 +108,20 @@ export function createDriveOAuth({env=process.env, fetcher=(...args)=>fetch(...a
       res.json({connected:true,archiveReady:folder.mimeType==='application/vnd.google-apps.folder' && folder.capabilities?.canAddChildren===true});
     } catch(e){res.status(503).json({connected:false,archiveReady:false,error:e.message})}
   }
-  return {start,callback,status,accessToken};
+  async function pickerConfig(_req,res) {
+    headers(res);
+    const apiKey=env.GOOGLE_PICKER_API_KEY;
+    const appId=env.GOOGLE_CLOUD_PROJECT_NUMBER || String(env.GOOGLE_DRIVE_OAUTH_CLIENT_ID||'').split('-')[0];
+    if(!apiKey || !/^\d+$/.test(appId))return res.status(503).json({error:'Google Picker API key needs configuration in Railway'});
+    try {res.json({accessToken:await accessToken(),apiKey,appId,folderId:ARCHIVE_FOLDER})}
+    catch {res.status(503).json({error:'Connect Google Drive before selecting the archive folder'})}
+  }
+  async function confirmFolder(req,res) {
+    headers(res);
+    if(req.body?.folderId!==ARCHIVE_FOLDER)return res.status(400).json({error:'Select the existing Job Posting Archive folder'});
+    return status(req,res);
+  }
+  return {start,callback,status,accessToken,pickerConfig,confirmFolder};
 }
 
 export const driveOAuth=createDriveOAuth();

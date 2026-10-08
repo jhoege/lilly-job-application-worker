@@ -53,3 +53,13 @@ test('missing configuration fails closed and token errors never expose credentia
   const x=await fixture(t,async()=>new Response(JSON.stringify({error:'invalid_grant',error_description:'test-secret refresh-value'}),{status:400}));
   const s=response();await x.auth.callback(x.request,s);assert.equal(s.location,'/auth-browser?drive=failed');assert.deepEqual(await fs.readdir(x.dir),[]);
 });
+test('Picker configuration fails closed without a key and only sends credentials to the authenticated response',async t=>{
+  let calls=0;const x=await fixture(t,async()=>{calls++;return new Response(JSON.stringify({access_token:'picker-token',expires_in:3600}))});
+  const r=response();await x.auth.pickerConfig({},r);assert.equal(r.statusCode,503);assert.equal(calls,0);assert.ok(!JSON.stringify(r.body).includes('picker-token'));
+  x.env.GOOGLE_PICKER_API_KEY='test-picker-key';x.env.GOOGLE_CLOUD_PROJECT_NUMBER='234123808576';x.env.GOOGLE_DRIVE_OAUTH_REFRESH_TOKEN='test-refresh';
+  const s=response();await x.auth.pickerConfig({},s);assert.equal(s.body.appId,'234123808576');assert.equal(s.body.accessToken,'picker-token');assert.equal(s.body.apiKey,'test-picker-key');assert.ok(!JSON.stringify(s.body).includes('test-secret'));assert.ok(!JSON.stringify(s.body).includes('test-refresh'));
+});
+test('folder confirmation rejects any other folder before contacting Google',async t=>{
+  let calls=0;const x=await fixture(t,()=>{calls++;throw Error('unexpected request')});
+  const r=response();await x.auth.confirmFolder({body:{folderId:'another-folder'}},r);assert.equal(r.statusCode,400);assert.equal(calls,0);
+});
