@@ -104,7 +104,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null}={}){
      await easy.click({timeout:8000});
      await page.locator('[role="dialog"]').first().waitFor({state:'visible',timeout:8000}).catch(()=>{});
      stage='form';
-     let steps=0,unknown=[],status='requires_review';
+     let steps=0,unknown=[],status='requires_review',diagnostic=null;
      for(let step=0;step<6;step++){
       setStage('reading_form_page_'+(step+1));
       const fields=await fieldsOnPage(page);
@@ -126,8 +126,12 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null}={}){
        status='needs_answers';break;
       }
       const dialog=page.locator('[role="dialog"]');
-      const review=dialog.getByRole('button',{name:/^review$/i});
-      const next=dialog.getByRole('button',{name:/^next$/i});
+      const review=dialog.getByRole('button',{name:/^(review|review application)$/i});
+      const next=dialog.getByRole('button',{name:/^(next|continue|continue to next step)$/i});
+      const submit=dialog.getByRole('button',{name:/^submit application$/i});
+      diagnostic={page:step+1,visibleFields:fields.length,unfilledRequired:missing.length,
+       buttons:(await dialog.locator('button').allTextContents().catch(()=>[])).map(s=>s.trim()).filter(Boolean).slice(-12)};
+      if(await submit.isVisible().catch(()=>false)){status='ready_for_review';break}
       if(await review.count()&&await review.first().isEnabled()){
        setStage('advancing_to_review');
        await review.first().click({timeout:5000});steps++;status='ready_for_review';break;
@@ -141,7 +145,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null}={}){
      }
      let added=0;
      if(unknown.length){setStage('saving_questions_to_sheet');added=(await appendUnknownQuestions(unknown.map(question=>({jobId:job.id,platform:'LinkedIn',question,url:job.url})))).added;}
-     results.push({jobId:job.id,status,stepsCompleted:steps,unknownQuestions:unknown.length,logged:added,submitted:false});
+     results.push({jobId:job.id,status,stepsCompleted:steps,unknownQuestions:unknown.length,logged:added,diagnostic,submitted:false});
      // This triage never presses Submit. Closing this isolated page abandons the form.
     }catch(e){results.push({jobId:job.id,status:cancelRequested?'cancelled':timedOut?'job_timeout':'technical_failure',stage,reason:String(e.message).slice(0,120)})}
     finally{
