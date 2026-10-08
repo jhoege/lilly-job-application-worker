@@ -147,13 +147,15 @@
     {
       "linkedinJobId": "4476780525",
       "url": "https://www.linkedin.com/jobs/view/4476780525/",
-      "status": "inspected_needs_application_review",
+      "status": "submitted_verified",
       "company": "Fitpoint Talent Solutions",
       "title": "COO Advisor & Operational Excellence Coach",
       "easyApply": true,
       "salary": null,
-      "submitted": false,
-      "salaryReference": 200000
+      "submitted": true,
+      "salaryReference": 200000,
+      "confirmation": "LinkedIn success confirmation screenshot supplied by user on 2026-10-07",
+      "screeningQuestions": "none reported"
     }
   ]
 }
