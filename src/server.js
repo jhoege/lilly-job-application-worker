@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import { mountAuthBrowser } from './auth-browser.js';
-import { checkAnswerConnector, smsJobSummary, smsRecordAnswer } from './google-answers.js';
+import { checkAnswerConnector, smsJobSummary, smsRecordAnswer,pendingQuestionCount } from './google-answers.js';
 import { startQuestionAlerts } from './question-alerts.js';
 import { startAutoTriage,runAutoTriage } from './auto-triage.js';
 import { handleSmsCommand } from './sms-operations.js';
@@ -179,3 +179,5 @@ process.on('SIGINT', () => void shutdown('SIGINT'));
 
 
 
+
+void pendingQuestionCount().then(count=>console.log('[question-count-verification] pending='+count)).catch(e=>console.error('[question-count-verification] '+String(e.message).slice(0,100)));

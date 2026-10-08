@@ -107,7 +107,7 @@ export async function pendingQuestionCount(){
  const response=await fetch('https://sheets.googleapis.com/v4/spreadsheets/'+SHEET_ID+'/values/'+range,{headers:{Authorization:'Bearer '+access},signal:AbortSignal.timeout(12000)});
  if(!response.ok)throw Error('Pending question check failed HTTP '+response.status);
  const rows=(await response.json()).values||[];
- return rows.slice(1).filter(r=>String(r[3]||'').trim()&&String(r[6]||'').trim().toLowerCase()!=='approved').length;
+ return rows.slice(1).filter(r=>String(r[3]||'').trim()&&/^needs answer$/i.test(String(r[6]||'').trim())).length;
 }
 
 export async function readSubmittedJobIds(){
@@ -178,14 +178,14 @@ export async function smsJobSummary(command='jobs'){
  const qrange=encodeURIComponent("'Questions To Answer'!A1:G1000");
  const qr=await fetch(SHEETS_BASE+qrange,{headers:{Authorization:'Bearer '+access},signal:AbortSignal.timeout(12000)});
  if(!qr.ok)throw Error('Question bank unavailable');
- const questions=((await qr.json()).values||[]).slice(1).filter(r=>String(r[3]||'').trim()&&String(r[6]||'').trim().toLowerCase()!=='approved');
+ const questions=((await qr.json()).values||[]).slice(1).filter(r=>String(r[3]||'').trim()&&/^needs answer$/i.test(String(r[6]||'').trim()));
  if(/details/i.test(command)){
-  const pending=applications.filter(r=>!verifiedSubmission(r[4])&&!/closed/i.test(r[4]||''));
+  const pending=applications.filter(r=>!verifiedSubmission(r[4])&&!excludedApplication(r[4]));
   return 'Lilly Jobs details: '+pending.length+' pending. '+pending.slice(0,4).map(r=>String(r[0])+': '+String(r[2]||'')+' '+String(r[3]||'').slice(0,70)+' — '+String(r[4]||'Needs review')+'; '+String(r[9]||'No blocker detail recorded').slice(0,120)).join(' | ')+' Text JOBS RETRY to start a new attempt; JOBS STATUS for progress.';
  }
  if(/question/i.test(command)){
   if(!questions.length)return 'Lilly Jobs: No unanswered screening questions in the tracker.';
-  return 'Lilly Jobs: '+questions.length+' pending. '+questions.slice(0,3).map(r=>String(r[0])+': '+String(r[3]).slice(0,110)).join(' | ')+' Reply ANSWER <ID> <your answer> to record one.';
+  return 'Lilly Jobs: '+questions.length+' pending. '+questions.slice(0,6).map(r=>String(r[0])+': '+String(r[3]).slice(0,110)).join(' | ')+' Reply ANSWER <ID> <your answer> to record one.';
  }
  return 'Lilly Jobs tracker: '+counts.submitted+' verified submitted; '+counts.blocked+' saved/blocked; '+counts.closed+' closed; '+counts.other+' other; '+questions.length+' questions pending. Text JOBS QUESTIONS for details. These are tracker counts, not live application confirmations.';
 }

@@ -24,6 +24,7 @@ const aliases=new Map([
 function lookupAnswer(label,approved,advertisedSalary){
  const n=normalize(label).replace(/ required$/,'');
  let key=aliases.get(n)||n;
+ if(/(furnish|provide|show).*(documentation|documents|proof)/.test(n))return approved.find(a=>normalize(a.question)===n)?.answer;
  if(/(desired|expected|salary expectation|compensation expectation)/.test(n)&&/(salary|compensation|pay)/.test(n)){
   return advertisedSalary==null?undefined:String(advertisedSalary);
  }
@@ -57,12 +58,14 @@ async function fieldsOnPage(page){
   const dialog=ranked[0]?.score>=7?ranked[0].d:null;
   if(!dialog)return null;
   dialog.setAttribute('data-lilly-application','true');
+  for(const old of dialog.querySelectorAll('[data-lilly-field]'))old.removeAttribute('data-lilly-field');
   const fields=[...dialog.querySelectorAll('input,textarea,select')].filter(el=>{
    const style=window.getComputedStyle(el);
    return el.type!=='hidden'&&style.visibility!=='hidden'&&style.display!=='none'&&el.getClientRects().length>0;
   });
   const normalizeText=s=>String(s||'').replace(/\s+/g,' ').replace(/\s*\*\s*$/,'').trim();
   return fields.map((el,index)=>{
+   el.setAttribute('data-lilly-field',String(index));
    const fieldset=el.closest('fieldset');
    let group=fieldset;
    if(el.type==='radio'||el.type==='checkbox'){
@@ -277,7 +280,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       setStage('reading_form_page_'+(step+1));
       const fields=await fieldsOnPage(page);
       if(!fields){status='form_unavailable';break}
-      const missing=[],fillErrors=[];
+      const missing=[],fillErrors=[],unknownFields=[];
       if(packet&&!packetSelected&&await page.locator(FORM_SELECTOR+' input[type=file]').count()){
        const uploaded=await uploadResumePacket(page,FORM_SELECTOR,packet);
        if(!uploaded.ok){status='needs_manual_review';diagnostic={reason:uploaded.reason};break;}
@@ -292,13 +295,14 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
        const answer=lookupAnswer(f.label,approved,advertisedSalary);
        // Only fill clearly labeled text-like fields. No guessed dropdown, radio, checkbox, file or identity answers.
        if(answer!==undefined&&f.label){
-        const input=page.locator('[data-lilly-application="true"] input:not([type="hidden"]), [data-lilly-application="true"] textarea, [data-lilly-application="true"] select').filter({visible:true}).nth(f.index);
+        await fieldsOnPage(page);
+        let input=page.locator(FORM_SELECTOR+' [data-lilly-field="'+f.index+'"]');
         try{
          if(['text','email','tel','number','textarea'].includes(f.type)){
           await input.fill(String(answer),{timeout:2500});
          }else if(f.type==='radio'){
           const wanted=normalize(/willing to work overtime as needed/i.test(f.label)&&/^I am open to working as required/i.test(answer)?'Yes':answer);
-          const group=page.locator('[data-lilly-application="true"] input[type="radio"]').filter({visible:true});
+          const group=page.locator(FORM_SELECTOR+' input[type=radio][data-lilly-field]');
           const names=await group.evaluateAll(nodes=>nodes.map(n=>{
            let label=n.getAttribute('aria-label')||(n.getAttribute('aria-labelledby')||'').split(/\s+/).map(id=>document.getElementById(id)?.innerText||'').join(' ').trim()||n.labels?.[0]?.innerText||n.closest('label')?.innerText||'';
            if(!label.trim())for(let a=n.parentElement;a;a=a.parentElement){
@@ -314,18 +318,18 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
          }else if(f.type==='checkbox'&&/indicate all shifts/i.test(f.label)&&/^I am open to any required hours and shifts/i.test(answer)){
           await input.check({timeout:2500});
          }else if(f.tag==='select'){
-          const choices=await input.evaluate(n=>[...n.options].map(o=>({label:o.textContent,value:o.value})));
+          const choices=await input.evaluate(n=>[...(n.options||[])].map(o=>({label:o.textContent,value:o.value})),null,{timeout:1200});
           const choice=choices.find(o=>normalize(o.label)===normalize(answer)||normalize(o.value)===normalize(answer))||(/salary|compensation|pay/i.test(f.label)&&Number(answer)>0?salaryChoice(choices,Number(answer)):null);
           if(!choice)throw Error('No matching approved select choice');
           await input.selectOption({value:choice.value},{timeout:2500});
          }else throw Error('Unsupported field type');
-        }catch(e){fillErrors.push({label:f.label,type:f.type,error:String(e.message).slice(0,220),target:await input.evaluate(n=>({tag:n.tagName,type:n.type,label:n.getAttribute('aria-label'),id:n.id})).catch(()=>null)});missing.push(f)}
-       }else missing.push(f);
+        }catch(e){fillErrors.push({label:f.label,type:f.type,error:String(e.message).slice(0,220),target:await input.evaluate(n=>({tag:n.tagName,type:n.type,label:n.getAttribute('aria-label'),id:n.id}),null,{timeout:800}).catch(()=>null)});missing.push(f)}
+       }else {missing.push(f);unknownFields.push(f);}
       }
       if(missing.length){setStage('collecting_unanswered_questions');
-       unknown=[...new Set(missing.map(x=>x.label||('Unlabeled required '+x.type+' field')))];
+       unknown=[...new Set(unknownFields.map(x=>x.label||('Unlabeled required '+x.type+' field')))];
        diagnostic={page:step+1,visibleFields:fields.length,unfilledRequired:missing.length,reason:'required_answers_missing',fillErrors,missing:missing.map(f=>({label:f.label,type:f.type})),fields:fields.map(f=>({label:f.label,type:f.type,name:f.name,required:f.required,filled:f.filled})),choices:await page.locator(FORM_SELECTOR+' input[type=radio],'+FORM_SELECTOR+' select').evaluateAll(ns=>ns.map(n=>({name:n.name,value:n.type==='radio'?n.value:null,label:n.labels?.[0]?.innerText||n.closest('label')?.innerText||n.parentElement?.innerText||n.getAttribute('aria-label')||'',options:n.options?[...n.options].map(o=>({label:o.textContent,value:o.value})):[]})))};
-       status='needs_answers';break;
+       status=unknown.length?'needs_answers':'submission_blocked';break;
       }
       const dialog=page.locator(FORM_SELECTOR);
       const review=dialog.getByRole('button',{name:/^(review|review application)$/i});

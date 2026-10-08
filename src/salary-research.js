@@ -40,6 +40,7 @@ export function salaryChoice(options,target){
  const candidates=options.filter(o=>{
   const label=o.label||'',range=label.match(/(\$?\s*[\d,]+\s*k?)\s*(?:-|–|—|to)\s*(\$?\s*[\d,]+\s*k?)/i);
   if(range){const lo=amount(range[1].trim()),hi=amount(range[2].trim());return lo>=10000&&target>=lo&&target<=hi;}
+  const above=label.match(/(?:more than|greater than|above|>)\s*(\$?\s*[\d,]+\s*k?)/i);if(above)return target>amount(above[1].trim());
   const open=label.match(/(\$?\s*[\d,]+\s*k?)\s*(?:\+|or more|and above|and over)/i);if(open)return target>=amount(open[1].trim());
   return /^\$?[\d,]+$/.test(label.trim())&&amount(label.trim())===target;
  });
