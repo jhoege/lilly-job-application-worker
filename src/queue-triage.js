@@ -28,14 +28,14 @@ async function fieldsOnPage(page){
   });
  });
 }
-export async function triageQueue(context,{limit=5}={}){
+export async function triageQueue(context,{limit=5,offset=0}={}){
  if(running)throw Error('A triage run is already active');
  if(!context)throw Error('Browser unavailable');
  running=true;
  const results=[];
  try{
   const approved=await readApprovedAnswers();
-  const jobs=getQueue().filter(x=>!x.submitted&&x.status!=='closed_not_accepting_applications').slice(0,Math.max(1,Math.min(10,Number(limit)||5)));
+  const jobs=getQueue().filter(x=>!x.submitted&&x.status!=='closed_not_accepting_applications').slice(Math.max(0,Number(offset)||0),Math.max(0,Number(offset)||0)+Math.max(1,Math.min(10,Number(limit)||5)));
   const page=await context.newPage();
   try{
    for(const job of jobs){
