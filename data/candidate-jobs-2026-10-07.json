@@ -105,52 +105,55 @@
     {
       "linkedinJobId": "4474499407",
       "url": "https://www.linkedin.com/jobs/view/4474499407/",
-      "status": "needs_verification",
-      "company": null,
-      "title": null,
-      "easyApply": null,
+      "status": "closed_not_accepting_applications",
+      "company": "Black Hole, LLC",
+      "title": "Senior Director of Operations & Strategy",
+      "easyApply": false,
       "salary": null,
       "submitted": false
     },
     {
       "linkedinJobId": "4457377785",
       "url": "https://www.linkedin.com/jobs/view/4457377785/",
-      "status": "needs_verification",
-      "company": null,
-      "title": null,
-      "easyApply": null,
+      "status": "inspected_needs_application_review",
+      "company": "PetDesk",
+      "title": "Director, Implementation & Build",
+      "easyApply": true,
       "salary": null,
-      "submitted": false
+      "submitted": false,
+      "salaryRequest": 146000
     },
     {
       "linkedinJobId": "4468916221",
       "url": "https://www.linkedin.com/jobs/view/4468916221/",
-      "status": "needs_verification",
-      "company": null,
-      "title": null,
-      "easyApply": null,
+      "status": "inspected_needs_application_review",
+      "company": "Boden Talent",
+      "title": "Director of Operations",
+      "easyApply": true,
       "salary": null,
-      "submitted": false
+      "submitted": false,
+      "salaryRequest": 175000
     },
     {
       "linkedinJobId": "4464628441",
       "url": "https://www.linkedin.com/jobs/view/4464628441/",
-      "status": "needs_verification",
-      "company": null,
-      "title": null,
-      "easyApply": null,
+      "status": "inspected_needs_application_review",
+      "company": "The Richmond Group USA",
+      "title": "Director of Continuous Improvement",
+      "easyApply": true,
       "salary": null,
       "submitted": false
     },
     {
       "linkedinJobId": "4476780525",
       "url": "https://www.linkedin.com/jobs/view/4476780525/",
-      "status": "needs_verification",
-      "company": null,
-      "title": null,
-      "easyApply": null,
+      "status": "inspected_needs_application_review",
+      "company": "Fitpoint Talent Solutions",
+      "title": "COO Advisor & Operational Excellence Coach",
+      "easyApply": true,
       "salary": null,
-      "submitted": false
+      "submitted": false,
+      "salaryReference": 200000
     }
   ]
 }
