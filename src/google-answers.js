@@ -145,7 +145,7 @@ async function ledgerRows(access){
 export async function readApplicationLedger(){
  const access=await token();
  const rows=await ledgerRows(access);
- return rows.slice(1).filter(r=>r[0]).map(r=>({id:String(r[0]),company:r[2]||'',title:r[3]||'',status:r[4]||'',salaryRequest:r[5]||null,url:r[8]||'',reason:r[9]||'',source:r[10]||'',resumeVersion:r[15]||''}));
+ return rows.slice(1).filter(r=>r[0]).map(r=>({id:String(r[0]),company:r[2]||'',title:r[3]||'',status:r[4]||'',salaryRequest:r[5]||null,url:r[8]||'',reason:r[9]||'',source:r[10]||'',resumeVersion:r[15]||'',archiveUrl:r[11]||'',archiveStatus:r[12]||'',archivedAt:r[13]||''}));
 }
 export async function upsertApplicationStatus(job,status,reason='',extra={}){
  const id=String(job?.id||'').trim();

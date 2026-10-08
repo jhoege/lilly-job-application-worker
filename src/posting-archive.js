@@ -21,11 +21,16 @@ export async function archivePosting(page,job){
  if(!/^[0-9]{8,12}$/.test(id))throw Error('Invalid archive job ID');
  try{
   const token=await accessToken();
+  const existingId=String(job.archiveUrl||'').match(/drive\.google\.com\/file\/d\/([A-Za-z0-9_-]+)/)?.[1];
+  if(existingId&&job.archiveStatus==='Captured'){
+   const existing=await fetch('https://www.googleapis.com/drive/v3/files/'+existingId+'?fields=id,mimeType,size,parents,appProperties,trashed,webViewLink',{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(8000)});
+   if(existing.ok){const file=await existing.json();if(!file.trashed&&file.mimeType==='application/pdf'&&Number(file.size)>2000&&file.parents?.includes(FOLDER)&&file.appProperties?.lillyPostingSchema==='fulltext-v1'&&file.appProperties?.lillyJobId===id)return {ok:true,url:file.webViewLink||job.archiveUrl,reused:true};}
+  }
   const pdf=await capturePostingPdf(page,job);
   if(pdf.length<2000)throw Error('PDF unexpectedly small');
   const title=[job.company||'Employer',job.title||'Job',id].join(' - ').replace(/[^a-zA-Z0-9 ._-]/g,'').slice(0,160)+'.pdf';
   const boundary='lilly'+crypto.randomBytes(12).toString('hex');
-  const metadata=JSON.stringify({name:title,mimeType:'application/pdf',parents:[FOLDER],description:'Original job posting captured before application; '+String(job.url||'')});
+  const metadata=JSON.stringify({name:title,mimeType:'application/pdf',parents:[FOLDER],description:'Original job posting captured before application; '+String(job.url||''),appProperties:{lillyPostingSchema:'fulltext-v1',lillyJobId:id}});
   const body=Buffer.concat([Buffer.from('--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+metadata+'\r\n--'+boundary+'\r\nContent-Type: application/pdf\r\n\r\n'),pdf,Buffer.from('\r\n--'+boundary+'--\r\n')]);
   const response=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'multipart/related; boundary='+boundary},body,signal:AbortSignal.timeout(25000)});
   if(!response.ok){
