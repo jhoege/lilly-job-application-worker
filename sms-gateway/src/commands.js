@@ -49,7 +49,7 @@ export function helpText(env={}){
  if(tasks)lines.push('TASKS: open task list','DUE TODAY: tasks due today','PAST DUE: overdue tasks');
  else lines.push('Task lists: not connected');
  if(!jobs)lines.push('Calendar: not connected');
- if(jobs)lines.push('CALENDAR: ask about meeting times, locations or addresses; Google connection required, Outlook pending');
+ if(jobs)lines.push('CALENDAR CONNECT: connect Google securely (read only)','CALENDAR STATUS: check live calendar access','CALENDAR: ask about meeting times, locations or addresses; Outlook pending');
  if(assistant)lines.push('EMAIL or INBOX: ask about email','BRIEFING: request a personal briefing');
  else lines.push('Email and briefing: not connected to SMS yet');
  lines.push('Bills: not connected','HI or HELLO: greeting','Natural job-search requests also work. Salary: 75% into posted/comparable range, minimum $120,000.');

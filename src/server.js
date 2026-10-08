@@ -9,12 +9,14 @@ import { startAutoTriage,runAutoTriage } from './auto-triage.js';
 import { handleSmsCommand } from './sms-operations.js';
 import {archivePosting} from './posting-archive.js';
 import {driveOAuth} from './drive-oauth.js';
-import {calendarOAuth,calendarReply,calendarConnection} from './calendar-access.js';
+import {calendarOAuth,calendarReply,calendarConnection,mountCalendarConnect,calendarConnectLink} from './calendar-access.js';
 import {processSearchBatch} from './search-batch.js';
 import {diagnoseApply} from './diagnose-apply.js';
 import {parseCommand} from '../sms-gateway/src/commands.js';
 
 const app = express();
+app.use('/integrations/calendar/connect',express.urlencoded({extended:false,limit:'1kb'}));
+mountCalendarConnect(app);
 app.get('/integrations/google-drive/callback', (req,res)=>String(req.query.state||'').startsWith('calendar-')?calendarOAuth.callback(req,res):driveOAuth.callback(req,res));
 const port = Number(process.env.PORT || 3000);
 const testMode = process.env.TEST_MODE !== 'false';
@@ -91,7 +93,7 @@ async function initializeBrowser() {
     browserReady = true;
     browserError = null;
     console.log(`[browser] Chromium ready; profile=${profilePath}; testMode=${testMode}`);
-    void calendarConnection().then(c=>console.log('[calendar-access] connected='+c.connected+' mode='+(c.mode||'needs_authorization')));
+    void calendarConnection().then(c=>{console.log('[calendar-access] connected='+c.connected+' mode='+(c.mode||'needs_authorization'));if(!c.connected&&process.env.CALENDAR_CONNECT_HANDOFF==='true')console.log('[calendar-connect-handoff] '+calendarConnectLink());});
     const diagnosticVersion=process.env.APPLICATION_LAYOUT_DIAGNOSTIC_VERSION||'';
     if(/^layout-v\d+$/.test(diagnosticVersion)){
       const record='/data/'+diagnosticVersion+'-result.json';

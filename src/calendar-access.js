@@ -1,8 +1,29 @@
+import crypto from 'node:crypto';
 import {createDriveOAuth} from './drive-oauth.js';
 import {serviceCalendarToken} from './google-answers.js';
 export const CALENDAR_SCOPE='https://www.googleapis.com/auth/calendar.readonly';
 export const calendarOAuth=createDriveOAuth({scope:CALENDAR_SCOPE,identity:'calendar'});
 const CONNECT='https://lilly-job-worker-app-production.up.railway.app/auth-browser';
+const tickets=new Map();
+export function calendarConnectLink(){
+ for(const [id,until]of tickets)if(until<Date.now())tickets.delete(id);
+ const ticket=crypto.randomBytes(32).toString('hex');tickets.set(ticket,Date.now()+10*60*1000);
+ return 'https://lilly-job-worker-app-production.up.railway.app/integrations/calendar/connect?ticket='+ticket;
+}
+export function mountCalendarConnect(app){
+ const valid=ticket=>typeof ticket==='string'&&/^[a-f0-9]{64}$/.test(ticket)&&(tickets.get(ticket)||0)>Date.now();
+ app.get('/integrations/calendar/connect',(req,res)=>{
+  res.set('Cache-Control','no-store');res.set('Referrer-Policy','no-referrer');res.set('Content-Security-Policy',"default-src 'none'; form-action 'self'; frame-ancestors 'none'");
+  if(!valid(req.query.ticket))return res.status(410).type('text').send('This connection link expired. Text CALENDAR CONNECT to Lilly for a new link.');
+  res.type('html').send('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect Lilly calendar</title></head><body><h1>Connect Google Calendar to Lilly</h1><p>Allow Lilly to read meeting times, locations, addresses and video links for your SMS questions.</p><form method="post"><input type="hidden" name="ticket" value="'+req.query.ticket+'"><button type="submit">Connect Google Calendar (read only)</button></form></body></html>');
+ });
+ app.post('/integrations/calendar/connect',async(req,res)=>{
+  if(!valid(req.body?.ticket))return res.status(410).type('text').send('Connection link expired. Text CALENDAR CONNECT for a new link.');
+  tickets.delete(req.body.ticket);
+  const json=res.json.bind(res);res.json=body=>body.authorizationUrl?res.redirect(303,body.authorizationUrl):json(body);
+  calendarOAuth.start(req,res);
+ });
+}
 async function api(token,path,params={}){
  const u=new URL('https://www.googleapis.com/calendar/v3/'+path);
  for(const [k,v]of Object.entries(params))u.searchParams.set(k,String(v));
@@ -44,8 +65,9 @@ export function calendarQuery(text,now=new Date()){
  return {timeMin:start.toISOString(),timeMax:end.toISOString(),q};
 }
 export async function calendarReply(text){
+ if(/^calendar\s+connect$/i.test(String(text||'').trim()))return 'Connect Google Calendar to Lilly (read only): '+calendarConnectLink()+' This link expires in 10 minutes. Outlook is not connected to SMS yet.';
  const c=await calendarConnection();
- if(!c.connected)return 'Lilly calendar: Google authorization is needed. Open '+CONNECT+' and choose Connect Google Calendar (read only). Outlook is not connected to SMS yet.';
+ if(!c.connected)return 'Lilly calendar: Google authorization is needed. Text CALENDAR CONNECT for a secure connection link. Outlook is not connected to SMS yet.';
  if(/^(?:calendar\s+)?status$/i.test(String(text||'').trim()))return 'Lilly calendar: Google live access is connected ('+c.calendars.length+' calendars). Outlook is not connected to SMS.';
  const query=calendarQuery(text),events=[],failures=[];
  await Promise.all(c.calendars.filter(x=>!/#holiday@/.test(x.id)).slice(0,20).map(async cal=>{

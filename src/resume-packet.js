@@ -29,7 +29,7 @@ async function resumeChoices(page,selector,name,mark=false){
   for(const old of d.querySelectorAll('[data-lilly-resume-choice]'))old.removeAttribute('data-lilly-resume-choice');
   const inputs=[...d.querySelectorAll('input[type=radio]')];
   const matching=inputs.filter(contains);
-  const selected=matching.some(n=>n.checked||n.closest('[role=radio]')?.getAttribute('aria-checked')==='true');
+  const selected=matching.some(n=>n.closest('[role=radio]')?n.closest('[role=radio]').getAttribute('aria-checked')==='true':n.checked);
   const onReview=[...d.querySelectorAll('button')].some(b=>/^submit application$/i.test((b.innerText||'').trim()));
   const reviewName=(d.innerText||'').includes(name)||[...d.querySelectorAll('[aria-label]')].some(n=>n.getAttribute('aria-label')===('Download '+name));
   return {selected:selected||(onReview&&reviewName),matching:matching.length,onReview};
@@ -52,12 +52,15 @@ export async function uploadResumePacket(page,selector,packet){
    if(!await card.count())throw Error('No unique resume choice card found');
    const label=card.locator('label[for]').first();
    const box=await label.boundingBox().catch(()=>null);
-   if(box&&box.width>8&&box.height>8)await label.click({timeout:4000});
-   else if(await card.getAttribute('role')==='radio')await card.press('Space',{timeout:4000});
+   if(await card.getAttribute('role')==='radio')await card.press('Space',{timeout:4000});
+   else if(box&&box.width>8&&box.height>8)await label.click({timeout:4000});
    else await card.click({timeout:4000});
   }
   for(let attempt=0;attempt<10;attempt++){
-   if(await verifyResumeSelection(page,selector,packet.name))return {ok:true};
+   if(await verifyResumeSelection(page,selector,packet.name)){
+    console.log('[resume-selection] '+JSON.stringify({name:packet.name,html:await page.locator(selector).evaluate(d=>[...d.querySelectorAll('input[type=radio]')].map(n=>({checked:n.checked,html:(n.closest('[role=radio]')||n.parentElement?.parentElement)?.outerHTML?.slice(0,2200)})))}));
+    await page.waitForTimeout(1000);return {ok:true};
+   }
    await page.waitForTimeout(250);
   }
   return {ok:false,reason:'Uploaded exact approved resume but selected attachment could not be verified'};
