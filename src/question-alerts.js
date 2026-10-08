@@ -3,6 +3,7 @@ import path from 'node:path';
 import {pendingQuestionCount} from './google-answers.js';
 const stateFile=process.env.JOB_ALERT_STATE_FILE||'/data/hourly-question-alert.json';
 let busy=false;
+let lastAttemptHour=null;
 export function startQuestionAlerts(){
  const endpoint=process.env.JOB_SMS_GATEWAY_URL;
  const secret=process.env.JOB_ALERT_SHARED_SECRET;
@@ -13,7 +14,8 @@ export function startQuestionAlerts(){
   const hour=now.toISOString().slice(0,13);
   let prior={};
   try{prior=JSON.parse(fs.readFileSync(stateFile,'utf8'))}catch{}
-  if(prior.lastSentHour===hour)return;
+  if(prior.lastSentHour===hour||lastAttemptHour===hour)return;
+  lastAttemptHour=hour;
   busy=true;
   try{
    const count=await pendingQuestionCount();
