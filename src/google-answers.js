@@ -185,3 +185,14 @@ export async function smsRecordAnswer(id,answer){
  return 'Lilly Jobs: Answer saved and approved for '+id+'. The job worker can reuse it during its next processing attempt.';
 }
 
+
+export async function setPostingArchive(jobId,{url,status,archivedAt}){
+ if(!/^[0-9]{8,12}$/.test(String(jobId)))throw Error('Invalid job ID');
+ const access=await token(),rows=await ledgerRows(access);
+ const index=rows.findIndex((r,i)=>i>0&&String(r[0]||'')===String(jobId));
+ if(index<1)throw Error('Job not in application tracker');
+ const range=encodeURIComponent("'Applications'!L"+(index+1)+":N"+(index+1));
+ const res=await fetch(SHEETS_BASE+range+'?valueInputOption=RAW',{method:'PUT',headers:{Authorization:'Bearer '+access,'Content-Type':'application/json'},body:JSON.stringify({values:[[url||'',status||'',archivedAt||'']]}),signal:AbortSignal.timeout(12000)});
+ if(!res.ok)throw Error('Archive tracker update HTTP '+res.status);
+ return true;
+}
