@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { mountAuthBrowser } from './auth-browser.js';
 import { checkAnswerConnector } from './google-answers.js';
 import { startQuestionAlerts } from './question-alerts.js';
+import { startAutoTriage } from './auto-triage.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -67,6 +68,7 @@ const server = app.listen(port, '0.0.0.0', () => {
   console.log(`[server] listening on ${port}`);
   void initializeBrowser();
   startQuestionAlerts();
+  startAutoTriage(() => browserContext);
 });
 
 async function shutdown(signal) {
