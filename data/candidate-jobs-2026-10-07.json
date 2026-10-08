@@ -1,0 +1,145 @@
+{
+  "description": "Candidate LinkedIn jobs supplied by user. Unverified until listing details and application status are checked in authenticated browser. No automatic submission authorized by this file.",
+  "created": "2026-10-07",
+  "rules": {
+    "seniority": [
+      "Director",
+      "Vice President"
+    ],
+    "areas": [
+      "Operations",
+      "Quality",
+      "Process Improvement",
+      "Continuous Improvement",
+      "Operational Excellence",
+      "Manufacturing",
+      "Logistics"
+    ],
+    "location": [
+      "Madison, WI",
+      "Remote"
+    ],
+    "excludedEmployers": [
+      "Lumino",
+      "Colorful Concrete Solutions",
+      "EVO Tech"
+    ],
+    "salaryRequest": {
+      "rangeFraction": 0.75,
+      "minimum": 120000
+    },
+    "minimumTargetSalary": 130000
+  },
+  "jobs": [
+    {
+      "linkedinJobId": "4474252598",
+      "url": "https://www.linkedin.com/jobs/view/4474252598/",
+      "status": "needs_verification",
+      "company": null,
+      "title": null,
+      "easyApply": null,
+      "salary": null,
+      "submitted": false
+    },
+    {
+      "linkedinJobId": "4472883287",
+      "url": "https://www.linkedin.com/jobs/view/4472883287/",
+      "status": "needs_verification",
+      "company": null,
+      "title": null,
+      "easyApply": null,
+      "salary": null,
+      "submitted": false
+    },
+    {
+      "linkedinJobId": "4470079202",
+      "url": "https://www.linkedin.com/jobs/view/4470079202/",
+      "status": "needs_verification",
+      "company": null,
+      "title": null,
+      "easyApply": null,
+      "salary": null,
+      "submitted": false
+    },
+    {
+      "linkedinJobId": "4472624995",
+      "url": "https://www.linkedin.com/jobs/view/4472624995/",
+      "status": "needs_verification",
+      "company": null,
+      "title": null,
+      "easyApply": null,
+      "salary": null,
+      "submitted": false
+    },
+    {
+      "linkedinJobId": "4470470211",
+      "url": "https://www.linkedin.com/jobs/view/4470470211/",
+      "status": "needs_verification",
+      "company": null,
+      "title": null,
+      "easyApply": null,
+      "salary": null,
+      "submitted": false
+    },
+    {
+      "linkedinJobId": "4474958471",
+      "url": "https://www.linkedin.com/jobs/view/4474958471/",
+      "status": "needs_verification",
+      "company": null,
+      "title": null,
+      "easyApply": null,
+      "salary": null,
+      "submitted": false
+    },
+    {
+      "linkedinJobId": "4474499407",
+      "url": "https://www.linkedin.com/jobs/view/4474499407/",
+      "status": "needs_verification",
+      "company": null,
+      "title": null,
+      "easyApply": null,
+      "salary": null,
+      "submitted": false
+    },
+    {
+      "linkedinJobId": "4457377785",
+      "url": "https://www.linkedin.com/jobs/view/4457377785/",
+      "status": "needs_verification",
+      "company": null,
+      "title": null,
+      "easyApply": null,
+      "salary": null,
+      "submitted": false
+    },
+    {
+      "linkedinJobId": "4468916221",
+      "url": "https://www.linkedin.com/jobs/view/4468916221/",
+      "status": "needs_verification",
+      "company": null,
+      "title": null,
+      "easyApply": null,
+      "salary": null,
+      "submitted": false
+    },
+    {
+      "linkedinJobId": "4464628441",
+      "url": "https://www.linkedin.com/jobs/view/4464628441/",
+      "status": "needs_verification",
+      "company": null,
+      "title": null,
+      "easyApply": null,
+      "salary": null,
+      "submitted": false
+    },
+    {
+      "linkedinJobId": "4476780525",
+      "url": "https://www.linkedin.com/jobs/view/4476780525/",
+      "status": "needs_verification",
+      "company": null,
+      "title": null,
+      "easyApply": null,
+      "salary": null,
+      "submitted": false
+    }
+  ]
+}
