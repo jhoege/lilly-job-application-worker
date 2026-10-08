@@ -65,3 +65,12 @@ export async function appendUnknownQuestions(items){
  if(!response.ok)throw Error('Question bank append failed HTTP '+response.status);
  return {added:rows.length};
 }
+
+export async function pendingQuestionCount(){
+ const access=await token();
+ const range=encodeURIComponent("'Questions To Answer'!A1:G1000");
+ const response=await fetch('https://sheets.googleapis.com/v4/spreadsheets/'+SHEET_ID+'/values/'+range,{headers:{Authorization:'Bearer '+access},signal:AbortSignal.timeout(12000)});
+ if(!response.ok)throw Error('Pending question check failed HTTP '+response.status);
+ const rows=(await response.json()).values||[];
+ return rows.slice(1).filter(r=>String(r[3]||'').trim()&&String(r[6]||'').trim().toLowerCase()!=='approved').length;
+}
