@@ -28,7 +28,7 @@ export async function readApprovedAnswers(){
  const range=encodeURIComponent("'Approved Answers'!A1:F500");
  const url='https://sheets.googleapis.com/v4/spreadsheets/'+SHEET_ID+'/values/'+range;
  const response=await fetch(url,{headers:{Authorization:'Bearer '+access},signal:AbortSignal.timeout(12000)});
- if(!response.ok)throw Error('Google Sheets read failed: HTTP '+response.status);
+ if(!response.ok){const body=await response.json().catch(()=>({}));const reason=body.error?.errors?.[0]?.reason||body.error?.status||'unknown';const msg=String(body.error?.message||'').replace(/[\\r\\n]/g,' ').slice(0,180);throw Error('Google Sheets read failed: HTTP '+response.status+'; reason='+reason+'; detail='+msg);}
  const data=await response.json();
  const rows=(data.values||[]).slice(1);
  return rows.filter(row=>String(row[4]||'').trim().toLowerCase()==='approved').map(row=>({id:row[0],category:row[1],question:row[2],answer:row[3]}));
