@@ -85,7 +85,7 @@ export async function readSubmittedJobIds(){
  for(const r of rows.slice(1)){
   const id=String(r[0]||'').trim();
   const status=String(r[4]||'').trim().toLowerCase();
-  if(/^\\d{8,12}$/.test(id)&&/submitted|applied|hired|interview/.test(status))submitted.add(id);
+  if(/^[0-9]{8,12}$/.test(id)&&/submitted|applied|hired|interview/.test(status))submitted.add(id);
  }
  return submitted;
 }
