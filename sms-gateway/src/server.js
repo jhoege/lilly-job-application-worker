@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import express from 'express';
 import { GoogleAuth } from 'google-auth-library';
 import twilio from 'twilio';
@@ -160,6 +161,27 @@ async function routeMessage(body) {
   if (n.includes('bill')) return 'Bills command recognized. Bills connector is not yet linked to this gateway.';
   if (n.includes('job')) return 'Jobs command recognized. Jobs connector is not yet linked to this gateway.';
   return 'Request received but not supported by text yet. Text HELP for available commands.';
+}
+
+// Outbound job-question notices use a separate, secret-protected endpoint.
+app.post('/internal/job-question-alert', express.json({limit:'4kb'}), async(req,res)=>{
+ const secret=process.env.JOB_ALERT_SHARED_SECRET;
+ const provided=String(req.get('authorization')||'').replace(/^Bearer /i,'');
+ if(!secret||!provided||provided.length!==secret.length||
+    !twilioAuthToken||!process.env.TWILIO_ACCOUNT_SID||!process.env.TWILIO_FROM_PHONE||
+    !requireSafeEqual(provided,secret))return res.sendStatus(403);
+ const count=Number(req.body?.count);
+ if(!Number.isInteger(count)||count<1||count>999)return res.sendStatus(400);
+ try{
+  const client=twilio(process.env.TWILIO_ACCOUNT_SID,twilioAuthToken);
+  const body='Lilly: '+count+' job application question(s) need your approved answers. Update: https://docs.google.com/spreadsheets/d/1g4eUIwU1-zyZWuNyMCxradZLhtDnjBcTS34DkxUcItg/edit';
+  const msg=await client.messages.create({to:allowedPhone,from:process.env.TWILIO_FROM_PHONE,body});
+  res.json({sent:true,messageId:msg.sid});
+ }catch(e){console.error('[job-alert] delivery failed',String(e.code||e.message).slice(0,80));res.status(502).json({sent:false})}
+});
+function requireSafeEqual(a,b){
+ const x=Buffer.from(a),y=Buffer.from(b);
+ return x.length===y.length&&crypto.timingSafeEqual(x,y);
 }
 
 app.get('/health', (_req, res) => res.status(200).send('OK'));
