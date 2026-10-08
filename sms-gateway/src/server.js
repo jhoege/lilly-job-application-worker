@@ -173,6 +173,25 @@ app.get('/internal/job-alert-status',(req,res)=>{
  res.json({ready:missing.length===0,missing});
 });
 
+// Fixed, one-time calendar SMS test. Never accepts arbitrary message text.
+app.post('/internal/calendar-test',express.json({limit:'1kb'}),async(req,res)=>{
+ const secret=process.env.JOB_ALERT_SHARED_SECRET||'';
+ const supplied=String(req.get('authorization')||'').replace(/^Bearer /i,'');
+ if(!secret||!requireSafeEqual(supplied,secret))return res.sendStatus(403);
+ if(req.body?.testId!=='calendar-2026-10-08')return res.sendStatus(400);
+ if(!allowedPhone||!process.env.TWILIO_ACCOUNT_SID||!process.env.TWILIO_FROM_PHONE||!twilioAuthToken)return res.status(503).json({sent:false,reason:'sms_config_missing'});
+ const body='Lilly calendar test - Thu Oct 8, 2026: Google Calendar: 1 event. Outlook: 1 event. Both show the same GAME 8 - JV2 @ Verona, 6:00-7:30 PM Central, Verona Area High School, 234 Wildcat Way. No other events found on either primary calendar.';
+ try{
+  const client=twilio(process.env.TWILIO_ACCOUNT_SID,twilioAuthToken);
+  const msg=await client.messages.create({to:allowedPhone,from:process.env.TWILIO_FROM_PHONE,body});
+  console.log('[calendar-test] accepted by Twilio; status='+msg.status);
+  return res.json({sent:true,providerStatus:msg.status,messageId:msg.sid});
+ }catch(e){
+  console.error('[calendar-test] Twilio rejected message: code='+String(e.code||'unknown'));
+  return res.status(502).json({sent:false,providerCode:String(e.code||'unknown')});
+ }
+});
+
 // Outbound job-question notices use a separate, secret-protected endpoint.
 app.post('/internal/job-question-alert', express.json({limit:'4kb'}), async(req,res)=>{
  const secret=process.env.JOB_ALERT_SHARED_SECRET;
