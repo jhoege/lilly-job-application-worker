@@ -89,3 +89,16 @@ export async function readSubmittedJobIds(){
  }
  return submitted;
 }
+
+export async function logVerifiedLinkedInApplication(job){
+ const id=String(job?.id||'');
+ if(!/^[0-9]{8,12}$/.test(id))throw Error('Invalid LinkedIn job ID');
+ const existing=await readSubmittedJobIds();
+ if(existing.has(id))return {added:false,reason:'already_logged'};
+ const access=await token();
+ const url='https://sheets.googleapis.com/v4/spreadsheets/'+SHEET_ID+'/values/'+encodeURIComponent("'Applications'!A:G")+':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS';
+ const values=[[id,'LinkedIn',String(job.company||''),String(job.title||''),'Submitted verified','','LinkedIn application status displayed as submitted']];
+ const response=await fetch(url,{method:'POST',headers:{Authorization:'Bearer '+access,'Content-Type':'application/json'},body:JSON.stringify({values}),signal:AbortSignal.timeout(12000)});
+ if(!response.ok)throw Error('Application log append failed HTTP '+response.status);
+ return {added:true};
+}
