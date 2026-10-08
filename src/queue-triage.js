@@ -180,10 +180,26 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null}={}){
       const submit=dialog.getByRole('button',{name:/^submit application$/i});
       diagnostic={page:step+1,visibleFields:fields.length,unfilledRequired:missing.length,
        buttons:(await dialog.locator('button').allTextContents().catch(()=>[])).map(s=>s.trim()).filter(Boolean).slice(-12)};
-      if(await submit.isVisible().catch(()=>false)){status='ready_for_review';break}
+      if(await submit.isVisible().catch(()=>false)){
+       if(process.env.AUTO_SUBMIT_ENABLED==='true'&&process.env.TEST_MODE==='false'&&!submittedIds.has(job.id)){
+        // Submit only after all observed required fields are complete, and verify LinkedIn's confirmation.
+        setStage('submitting_completed_application');
+        if(!await submit.isEnabled()) {status='submission_blocked';break}
+        await submit.click({timeout:8000});
+        const confirmation=page.getByText(/your application was sent to|application submitted successfully|application was submitted/i).first();
+        if(await confirmation.isVisible({timeout:12000}).catch(()=>false)){
+         setStage('logging_verified_submission');
+         const logged=await logVerifiedLinkedInApplication(job);
+         submittedIds.add(job.id);
+         status='submitted_verified';
+         diagnostic={...diagnostic,logged:logged.added};
+        }else status='submission_unverified';
+       }else status='ready_for_review';
+       break;
+      }
       if(await review.count()&&await review.first().isEnabled()){
        setStage('advancing_to_review');
-       await review.first().click({timeout:5000});steps++;status='ready_for_review';break;
+       await review.first().click({timeout:5000});steps++;continue;
       }
       if(await next.count()&&await next.first().isEnabled()){
        setStage('advancing_form_page');
@@ -205,7 +221,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null}={}){
      }
      let added=0;
      if(unknown.length){setStage('saving_questions_to_sheet');added=(await appendUnknownQuestions(unknown.map(question=>({jobId:job.id,platform:'LinkedIn',question,url:job.url})))).added;}
-     results.push({jobId:job.id,status,stepsCompleted:steps,unknownQuestions:unknown.length,logged:added,diagnostic,submitted:false});
+     results.push({jobId:job.id,status,stepsCompleted:steps,unknownQuestions:unknown.length,logged:added,diagnostic,submitted:status==='submitted_verified'});
      // This triage never presses Submit. Closing this isolated page abandons the form.
     }catch(e){results.push({jobId:job.id,status:cancelRequested?'cancelled':timedOut?'job_timeout':'technical_failure',stage,reason:String(e.message).slice(0,120)})}
     finally{
@@ -219,6 +235,6 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null}={}){
     }
    }
   }finally{activePage=null}
-  return {mode:'safe_multistep_triage',submitted:0,results};
+  return {mode:process.env.AUTO_SUBMIT_ENABLED==='true'&&process.env.TEST_MODE==='false'?'guarded_submission':'safe_multistep_triage',submitted:results.filter(x=>x.submitted).length,results};
  }finally{running=false;progress.running=false;progress.currentJob=null;setStage(cancelRequested?'cancelled':'finished')}
 }
