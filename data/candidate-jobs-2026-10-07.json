@@ -34,12 +34,13 @@
     {
       "linkedinJobId": "4474252598",
       "url": "https://www.linkedin.com/jobs/view/4474252598/",
-      "status": "needs_verification",
-      "company": null,
-      "title": null,
+      "status": "submitted_verified",
+      "company": "Jobgether",
+      "title": "Head of Operations",
       "easyApply": null,
       "salary": null,
-      "submitted": false
+      "submitted": true,
+      "confirmation": "LinkedIn success message provided by user, October 7 2026"
     },
     {
       "linkedinJobId": "4472883287",
