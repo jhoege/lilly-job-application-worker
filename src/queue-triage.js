@@ -1,6 +1,12 @@
 import {getQueue} from './application-support.js';
 import {readApprovedAnswers,appendUnknownQuestions,readSubmittedJobIds} from './google-answers.js';
 let running=false;
+let cancelRequested=false;
+let activePage=null;
+let progress={running:false,processed:0,total:0,currentJob:null,startedAt:null,updatedAt:null,lastResult:null};
+export function getTriageStatus(){return {...progress};}
+export async function cancelTriage(){if(!running)return {running:false};cancelRequested=true;if(activePage)await activePage.close().catch(()=>{});return {cancelRequested:true};}
+export function startTriage(context,options={}){if(running)return {started:false,reason:'already_running',progress:getTriageStatus()};void triageQueue(context,options).then(result=>{progress.lastResult=result}).catch(e=>{progress.lastResult={error:String(e.message).slice(0,180)}});return {started:true,progress:getTriageStatus()};}
 const normalize=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 const aliases=new Map([
  ['email address','email'],['mobile phone number','mobile'],['phone number','mobile'],
@@ -37,13 +43,20 @@ export async function triageQueue(context,{limit=5,offset=0}={}){
  if(running)throw Error('A triage run is already active');
  if(!context)throw Error('Browser unavailable');
  running=true;
+ cancelRequested=false;
  const results=[];
+ progress={running:true,processed:0,total:0,currentJob:null,startedAt:new Date().toISOString(),updatedAt:new Date().toISOString(),lastResult:null};
  try{
   const [approved,submittedIds]=await Promise.all([readApprovedAnswers(),readSubmittedJobIds()]);
   const jobs=getQueue().filter(x=>!x.submitted&&x.status!=='closed_not_accepting_applications').slice(Math.max(0,Number(offset)||0),Math.max(0,Number(offset)||0)+Math.max(1,Math.min(10,Number(limit)||5)));
+  progress.total=jobs.length;
   const page=await context.newPage();
+  activePage=page;
   try{
    for(const job of jobs){
+    if(cancelRequested)break;
+    progress.currentJob=job.id;
+    progress.updatedAt=new Date().toISOString();
     if(submittedIds.has(job.id)){results.push({jobId:job.id,status:'skipped_already_logged',visited:false});continue;}
     let stage='navigation';
     try{
@@ -111,9 +124,10 @@ export async function triageQueue(context,{limit=5,offset=0}={}){
      if(unknown.length)added=(await appendUnknownQuestions(unknown.map(question=>({jobId:job.id,platform:'LinkedIn',question,url:job.url})))).added;
      results.push({jobId:job.id,status,stepsCompleted:steps,unknownQuestions:unknown.length,logged:added,submitted:false});
      // This triage never presses Submit. Closing this isolated page abandons the form.
-    }catch(e){results.push({jobId:job.id,status:'technical_failure',stage,reason:String(e.message).slice(0,120)})}
+    }catch(e){results.push({jobId:job.id,status:cancelRequested?'cancelled':'technical_failure',stage,reason:String(e.message).slice(0,120)})}
+    finally{progress.processed++;progress.updatedAt=new Date().toISOString()}
    }
-  }finally{await page.close().catch(()=>{})}
+  }finally{activePage=null;await page.close().catch(()=>{})}
   return {mode:'safe_multistep_triage',submitted:0,results};
- }finally{running=false}
+ }finally{running=false;progress.running=false;progress.currentJob=null;progress.updatedAt=new Date().toISOString()}
 }
