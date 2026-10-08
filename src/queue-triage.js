@@ -314,9 +314,9 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
           }));
           const selected=names.findIndex(x=>x.name===f.name&&(normalize(x.value)===wanted||normalize(x.label)===wanted));
           if(selected<0)throw Error('No exact approved radio choice');
-          await group.nth(selected).check({timeout:2500});
+          await checkNativeChoice(page,group.nth(selected));
          }else if(f.type==='checkbox'&&/indicate all shifts/i.test(f.label)&&/^I am open to any required hours and shifts/i.test(answer)){
-          await input.check({timeout:2500});
+          await checkNativeChoice(page,input);
          }else if(f.tag==='select'){
           const choices=await input.evaluate(n=>[...(n.options||[])].map(o=>({label:o.textContent,value:o.value})),null,{timeout:1200});
           const choice=choices.find(o=>normalize(o.label)===normalize(answer)||normalize(o.value)===normalize(answer))||(/salary|compensation|pay/i.test(f.label)&&Number(answer)>0?salaryChoice(choices,Number(answer)):null);
@@ -433,4 +433,21 @@ async function advanceForm(page,button){
  await button.click({timeout:5000});
  const changed=await page.waitForFunction(({selector,before})=>{const d=document.querySelector(selector);return d&&d.innerText!==before;},{selector:FORM_SELECTOR,before},{timeout:7000}).then(()=>true).catch(()=>false);
  await page.waitForTimeout(700);return changed;
+}
+
+async function checkNativeChoice(page,input){
+ if(await input.isChecked())return;
+ const marker=await input.evaluate(n=>{
+  const key=n.id||'choice-'+Math.random().toString(36).slice(2);
+  for(let a=n.parentElement;a;a=a.parentElement){
+   const peers=a.querySelectorAll('input[type='+n.type+']');
+   if(peers.length>1)break;
+   if((a.innerText||'').trim()&&a.getClientRects().length){a.setAttribute('data-lilly-choice-for',key);return key;}
+  }
+  return null;
+ },null,{timeout:1200});
+ if(marker){
+  await page.locator(FORM_SELECTOR+' [data-lilly-choice-for='+JSON.stringify(marker)+']').click({timeout:4000});
+  if(!await input.isChecked())throw Error('Visible approved choice click did not select its native input');
+ }else await input.check({timeout:2500});
 }
