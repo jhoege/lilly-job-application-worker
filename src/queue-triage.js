@@ -246,7 +246,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
      },null,{timeout:9000}).catch(()=>{});
      stage='form';
      let steps=0,unknown=[],status='requires_review',diagnostic=null;
-     for(let step=0;step<6;step++){
+     for(let step=0;step<20;step++){
       setStage('reading_form_page_'+(step+1));
       const fields=await fieldsOnPage(page);
       if(!fields){status='form_unavailable';break}

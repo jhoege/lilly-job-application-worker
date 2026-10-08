@@ -52,7 +52,8 @@ export async function runAutoTriage(context,{force=false}={}){
    if(!eligible.length)return {started:true,results:[],reason:'no_eligible_jobs'};
    // Process the full eligible queue in consecutive batches, not just five per hour.
    // Cap at 25 per cycle to avoid overloading LinkedIn and Google Sheets.
-   for(let offset=0;offset<Math.min(eligible.length,25);offset+=5){
+   const cycleLimit=force?eligible.length:Math.min(eligible.length,25);
+   for(let offset=0;offset<cycleLimit;offset+=5){
     const ids=eligible.slice(offset,offset+5).map(j=>j.id);
     let result;
     try{result=await triageQueue(context,{limit:5,ids,jobsOverride:jobs})}

@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import { mountAuthBrowser } from './auth-browser.js';
 import { checkAnswerConnector, smsJobSummary, smsRecordAnswer } from './google-answers.js';
 import { startQuestionAlerts } from './question-alerts.js';
-import { startAutoTriage } from './auto-triage.js';
+import { startAutoTriage,runAutoTriage } from './auto-triage.js';
 import { handleSmsCommand } from './sms-operations.js';
 import {archivePosting} from './posting-archive.js';
 import {driveOAuth} from './drive-oauth.js';
@@ -87,6 +87,17 @@ async function initializeBrowser() {
     browserReady = true;
     browserError = null;
     console.log(`[browser] Chromium ready; profile=${profilePath}; testMode=${testMode}`);
+    const batchVersion=process.env.APPLICATION_BATCH_VERSION||'';
+    if(/^batch-\d{8}-v\d+$/.test(batchVersion)){
+      const record='/data/'+batchVersion+'-result.json';
+      if(!fs.existsSync(record))void (async()=>{
+        let result;
+        try{result=await runAutoTriage(browserContext,{force:true});}
+        catch(e){result={started:false,error:String(e.message).slice(0,160)};}
+        fs.writeFileSync(record,JSON.stringify({...result,finishedAt:new Date().toISOString()}),{mode:0o600});
+        console.log('[application-batch] '+JSON.stringify(result));
+      })();
+    }
     if(/^fulltext-v\d+$/.test(process.env.ARCHIVE_CAPTURE_VERIFY_VERSION||'')){
       const record='/data/archive-'+process.env.ARCHIVE_CAPTURE_VERIFY_VERSION+'-result.json';
       if(!fs.existsSync(record))void (async()=>{
