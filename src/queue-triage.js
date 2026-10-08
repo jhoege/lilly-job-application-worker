@@ -238,8 +238,19 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       if(await submit.isVisible().catch(()=>false)){
        if(process.env.AUTO_SUBMIT_ENABLED==='true'&&process.env.TEST_MODE==='false'&&!submittedIds.has(job.id)){
         // Submit only after all observed required fields are complete, and verify LinkedIn's confirmation.
+        setStage('validating_before_submission');
+        // Re-check submitted IDs immediately before submitting to avoid a stale queue.
+        if((await readSubmittedJobIds()).has(job.id)){status='already_applied_logged';break}
+        const validation=await page.evaluate(()=>{
+         const dialog=document.querySelector('[role="dialog"], .jobs-easy-apply-modal, .artdeco-modal');
+         if(!dialog)return {invalid:1,reason:'Application dialog missing'};
+         const invalid=[...dialog.querySelectorAll('input,textarea,select')].filter(el=>el.getClientRects().length&&
+          (el.getAttribute('aria-invalid')==='true'||(el.required&&!el.checkValidity())));
+         return {invalid:invalid.length};
+        });
+        if(validation.invalid>0){status='submission_blocked';diagnostic={...diagnostic,reason:'Unresolved invalid required fields',invalidFields:validation.invalid};break}
+        if(!await submit.isEnabled()) {status='submission_blocked';diagnostic={...diagnostic,reason:'Submit disabled'};break}
         setStage('submitting_completed_application');
-        if(!await submit.isEnabled()) {status='submission_blocked';break}
         await submit.click({timeout:8000});
         const confirmation=page.getByText(/your application was sent to|application submitted successfully|application was submitted/i).first();
         if(await confirmation.isVisible({timeout:12000}).catch(()=>false)){
