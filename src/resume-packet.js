@@ -18,6 +18,8 @@ export async function exportResumePacket(job,{getToken=serviceDriveToken,fetcher
 export async function verifyResumeSelection(page,selector,name){
  return page.locator(selector).evaluate((d,name)=>{
   const selected=[...d.querySelectorAll('input[type=radio]:checked,[role=radio][aria-checked=true],[aria-selected=true]')];
+  const onReview=[...d.querySelectorAll('button')].some(b=>/^submit application$/i.test((b.innerText||'').trim()));
+  if(onReview&&(d.innerText||'').includes(name))return true;
   return selected.some(n=>[n.labels?.[0],n.parentElement,n.parentElement?.parentElement].filter(Boolean).some(e=>(e.innerText||'').includes(name)));
  },name).catch(()=>false);
 }

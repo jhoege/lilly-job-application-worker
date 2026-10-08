@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import crypto from 'node:crypto';
-import {readApprovedAnswers,readApplicationLedger,upsertApplicationStatus} from './google-answers.js';
+import {readApprovedAnswers,readApplicationLedger,upsertApplicationStatus,recordSearchAttempt} from './google-answers.js';
 import {discoverSavedLinkedInJobs} from './linkedin-saved.js';
 import path from 'node:path';
 import {getQueue} from './application-support.js';
@@ -60,6 +60,13 @@ export async function runAutoTriage(context,{force=false}={}){
     try{result=await triageQueue(context,{limit:5,ids,jobsOverride:jobs})}
     catch(e){console.error('[auto-triage] batch failed '+String(e.message).slice(0,120));break}
     allResults.push(...(result.results||[]));
+    const outcomes=await readApplicationLedger();
+    for(const item of result.results||[]){
+     const record=outcomes.find(j=>j.id===item.jobId);
+     if(!record||item.status==='skipped_excluded'||item.status==='skipped_already_logged')continue;
+     try{item.mainTracker=await recordSearchAttempt(record.url,verifiedSubmission(record.status)?'Applied':record.status,record.reason||'Application outcome: '+record.status);}
+     catch(e){if(!/row no longer found/.test(e.message)){item.mainTracker={error:String(e.message).slice(0,120)};console.error('[main-tracker] job='+item.jobId+' '+item.mainTracker.error);}}
+    }
     for(const item of result.results||[]){
      if(item.jobId)state[item.jobId]={at:Date.now(),answers:fingerprint,status:item.status,engine:engineVersion};
     }

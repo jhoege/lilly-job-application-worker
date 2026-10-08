@@ -26,7 +26,7 @@ export async function processSearchBatch(context,primaryResults=[],dependencies=
     result.status='Closed';result.reason='Current posting reports closed or unavailable.';
    }else if(observed.captcha||/verify you are human|checking your browser|access denied|security verification/i.test(observed.text))result.reason='Site security/CAPTCHA blocks access; no bypass or application submission attempted.';
    else if(/authwall|\/login|\/signin|\/sign-in/i.test(observed.url))result.reason='Application source requires an authenticated session unavailable to the worker.';
-   else if((Number(row[8])||0)<130000)result.reason='Authoritative qualifying compensation is not established; application blocked by search rules.';
+   else if((Number(row[8])||0)<120000)result.reason='Authoritative qualifying compensation is not established; application blocked by search rules.';
    else if(row[14])result.reason='Role-specific resume packet is prepared, but the worker cannot yet select/upload that exact packet for this application. No default resume substituted.';
    else result.reason='Current source was opened, but its external application adapter is not implemented in the worker. No submission attempted.';
    result.reason+=' Observed page: '+observed.title.slice(0,120)+'; destination: '+observed.url.slice(0,300);

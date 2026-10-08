@@ -33,7 +33,8 @@ export async function readSearchLedger(){
  return (await r.json()).values||[];
 }
 export async function recordSearchAttempt(url,status,reason){
- const rows=await readSearchLedger(),index=rows.findIndex((r,i)=>i>0&&r[11]===url);
+ const canonical=s=>String(s||'').replace(/[?#].*$/,'').replace(/\/$/,'');
+ const rows=await readSearchLedger(),index=rows.findIndex((r,i)=>i>0&&canonical(r[11])===canonical(url));
  if(index<1)throw Error('Job Search row no longer found');
  const old=rows[index];
  if(/applied|submitted|interview|excluded|closed|reject/i.test(old[16]||''))return {updated:false,reason:'protected_status'};
@@ -215,3 +216,14 @@ export async function setPostingArchive(jobId,{url,status,archivedAt}){
  return true;
 }
 
+
+export async function setSalaryBaseline(job,baseline,amount){
+ const access=await token(),rows=await ledgerRows(access),index=rows.findIndex((r,i)=>i>0&&String(r[0])===job.id);
+ if(index<1)throw Error('Salary target application row not found');
+ if(verifiedSubmission(rows[index][4])||excludedApplication(rows[index][4]))return;
+ const headers={Authorization:'Bearer '+access,'Content-Type':'application/json'};
+ for(const [range,values] of [["'Applications'!F"+(index+1),[[String(amount)]]],["'Applications'!R"+(index+1)+':T'+(index+1),[[baseline.basis||'posted_range',JSON.stringify({min:baseline.min,max:baseline.max,samples:baseline.samples||[{url:job.url}]}),baseline.researchedAt||new Date().toISOString()]]]]){
+  const r=await fetch(SHEETS_BASE+encodeURIComponent(range)+'?valueInputOption=RAW',{method:'PUT',headers,body:JSON.stringify({values}),signal:AbortSignal.timeout(12000)});
+  if(!r.ok)throw Error('Salary basis write failed HTTP '+r.status);
+ }
+}

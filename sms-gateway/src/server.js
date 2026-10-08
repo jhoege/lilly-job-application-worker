@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import express from 'express';
 import { GoogleAuth } from 'google-auth-library';
 import twilio from 'twilio';
-import {parseCommand,isJobCommand} from './commands.js';
+import {parseCommand,isJobCommand,helpText} from './commands.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -164,7 +164,7 @@ async function jobsCommand(message,requestId){
 async function routeMessage(body,requestId) {
   const cmd=parseCommand(body);
   if(isJobCommand(cmd))return jobsCommand(String(body||''),requestId);
-  if(cmd.kind==='help')return 'Commands: JOB SEARCH <role>, JOBS RETRY, JOBS STATUS, JOBS DETAILS, JOBS QUESTIONS, ANSWER <ID> <answer>, TASKS, PAST DUE, DUE TODAY, STATUS. Natural job search requests are supported. Calendar/email/briefing require a live assistant bridge.';
+  if(cmd.kind==='help')return helpText(process.env);
   if(cmd.kind==='status')return 'Lilly SMS is online. Jobs worker '+(process.env.JOB_WORKER_URL&&process.env.JOB_ALERT_SHARED_SECRET?'configured':'not configured')+'. Calendar/email bridge '+(process.env.PERSONAL_ASSISTANT_URL&&process.env.PERSONAL_ASSISTANT_SECRET?'configured':'not connected')+'. JOBS STATUS checks processing.';
   if(cmd.kind==='hello'||cmd.kind==='hi')return 'Hello. Text HELP for available commands.';
   if(cmd.kind==='past_due')return summarizeTasks(await fetchTasks(),'past-due');
@@ -256,3 +256,6 @@ app.listen(port, '0.0.0.0', () => {
   console.log(`[server] lilly-sms-gateway listening on ${port}`);
 });
 
+
+
+void routeMessage('/help','self-test-help').then(reply=>console.log('[sms-help-self-test] '+JSON.stringify({command:'/help',reply}))).catch(e=>console.error('[sms-help-self-test] '+String(e.message).slice(0,100)));

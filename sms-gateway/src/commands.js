@@ -25,7 +25,8 @@ export function parseCommand(body) {
   role=role.replace(/\b(?:fully\s+)?remote\b/ig,'').replace(/\bmadison(?:\s*,?\s*wi(?:sconsin)?)?\b/ig,'').replace(/\bon\s+linkedin\b/ig,'').replace(/\s+/g,' ').trim();
   return {kind:'job_search',role:role||'VP of Operations',mode};
  }
- if(/^(?:help|status|hello|hi)$/i.test(text))return {kind:n};
+ if(/^\/?help$/i.test(text))return {kind:'help'};
+ if(/^(?:status|hello|hi)$/i.test(text))return {kind:n};
  if(/\b(calendar|schedule|appointments?)\b/i.test(text))return {kind:'calendar',text};
  if(/\b(email|emails|inbox|mail)\b/i.test(text))return {kind:'email',text};
  if(/\b(morning briefing|briefing)\b/i.test(text))return {kind:'briefing',text};
@@ -36,3 +37,19 @@ export function parseCommand(body) {
  return {kind:'unknown'};
 }
 export const isJobCommand=cmd=>cmd.kind.startsWith('job_')||['answer','invalid_answer','invalid_search'].includes(cmd.kind);
+
+
+export function helpText(env={}){
+ const jobs=!!(env.JOB_WORKER_URL&&env.JOB_ALERT_SHARED_SECRET);
+ const tasks=!!(env.LILLY_TASK_SPREADSHEET_ID&&env.GOOGLE_SERVICE_ACCOUNT_JSON);
+ const assistant=!!(env.PERSONAL_ASSISTANT_URL&&env.PERSONAL_ASSISTANT_SECRET);
+ const lines=['Lilly /help - available SMS actions','HELP or /help: show this menu','STATUS: check connected services'];
+ if(jobs)lines.push('JOB SEARCH <role> [remote]: find Easy Apply jobs','JOBS APPLY or JOBS RETRY: attempt qualified queued/saved applications; record blockers and continue','JOBS STATUS: processing progress and results','JOBS: application totals','JOBS DETAILS: pending jobs and blockers','JOBS QUESTIONS: unanswered screening questions','ANSWER <ID> <answer>: record your screening answer');
+ else lines.push('Job search/applications: not connected');
+ if(tasks)lines.push('TASKS: open task list','DUE TODAY: tasks due today','PAST DUE: overdue tasks');
+ else lines.push('Task lists: not connected');
+ if(assistant)lines.push('CALENDAR: ask about appointments/schedule','EMAIL or INBOX: ask about email','BRIEFING: request a personal briefing');
+ else lines.push('Email, calendar and briefing: not connected to SMS yet');
+ lines.push('Bills: not connected','HI or HELLO: greeting','Natural job-search requests also work. Salary: 75% into posted/comparable range, minimum $120,000.');
+ return lines.join('\n');
+}

@@ -1,3 +1,4 @@
+import {researchComparableSalary} from './salary-research.js';
 import {annualSalaryRange,excludedEmployer,QUALIFICATION_TARGET} from './job-policy.js';
 export function searchUrls(command){
  const queries=command.mode==='remote'?[{location:'United States',remote:true}]:[{location:'Madison, Wisconsin',remote:false},{location:'United States',remote:true}];
@@ -59,6 +60,11 @@ export async function searchJobs(context,command){
      if(!job.easyApply)continue;
      job.salaryText=text||job.salaryText;
      check=evaluateSearchCandidate(job,command.role);
+     if(check.eligible&&!check.salary){
+      const baseline=await researchComparableSalary(context,job);
+      if(baseline.max<QUALIFICATION_TARGET)continue;
+      job.salaryResearch=baseline;check={...check,salary:{min:baseline.min,max:baseline.max},qualification:'comparable_range_matches'};
+     }
      if(check.eligible)results.push({...job,...check});
     }catch{issues.push('Some posting details could not be verified');}
     finally{await details.close().catch(()=>{});}
@@ -69,8 +75,8 @@ export async function searchJobs(context,command){
   finally{await page.close().catch(()=>{});}
  }
  results.sort((a,b)=>Number(!!b.salary)-Number(!!a.salary)||Number(a.remoteSearch)-Number(b.remoteSearch));
- const lines=results.slice(0,4).map((j,i)=>`${i+1}) ${j.title.slice(0,85)} | ${j.company.slice(0,45)} | ${j.location.slice(0,60)} | ${j.salary?'$'+j.salary.min.toLocaleString('en-US')+'–$'+j.salary.max.toLocaleString('en-US'):'salary undisclosed'} ${j.url}`);
- const reply=lines.length?`Lilly search: ${command.role}. Easy Apply only; Madison area / fully remote; $130K qualification target.\n${lines.join('\n')}\nUndisclosed salaries need review. No applications submitted.`:`Lilly search: No verified Easy Apply matches for ${command.role} were returned. ${[...new Set(issues)].join('; ')||'No postings met application method, role, location and salary criteria'}. No applications submitted.`;
+ const lines=results.slice(0,4).map((j,i)=>`${i+1}) ${j.title.slice(0,85)} | ${j.company.slice(0,45)} | ${j.location.slice(0,60)} | ${j.salary?'$'+j.salary.min.toLocaleString('en-US')+'–$'+j.salary.max.toLocaleString('en-US'):'salary undisclosed'}${j.salaryResearch?' (comparable estimate)':''} ${j.url}`);
+ const reply=lines.length?`Lilly search: ${command.role}. Easy Apply only; Madison area / fully remote; $120K minimum.\n${lines.join('\n')}\nUnposted salaries use researched comparable ranges; comparable figures are labeled in results. No applications submitted.`:`Lilly search: No verified Easy Apply matches for ${command.role} were returned. ${[...new Set(issues)].join('; ')||'No postings met application method, role, location and salary criteria'}. No applications submitted.`;
  return {reply:reply.slice(0,1500),results,issues:[...new Set(issues)]};
 }
 

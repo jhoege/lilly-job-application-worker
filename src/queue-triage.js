@@ -1,7 +1,8 @@
 import {getQueue,salaryRequest} from './application-support.js';
-import {readApprovedAnswers,appendUnknownQuestions,readSubmittedJobIds,readApplicationLedger,logVerifiedLinkedInApplication,upsertApplicationStatus} from './google-answers.js';
-import {excludedEmployer,excludedApplication} from './job-policy.js';
+import {readApprovedAnswers,appendUnknownQuestions,readSubmittedJobIds,readApplicationLedger,logVerifiedLinkedInApplication,upsertApplicationStatus,setSalaryBaseline} from './google-answers.js';
+import {excludedEmployer,excludedApplication,annualSalaryRange} from './job-policy.js';
 import {archivePosting} from './posting-archive.js';
+import {researchComparableSalary,salaryChoice} from './salary-research.js';
 import {exportResumePacket,uploadResumePacket,verifyResumeSelection} from './resume-packet.js';
 let running=false;
 let cancelRequested=false;
@@ -37,15 +38,6 @@ function lookupAnswer(label,approved,advertisedSalary){
  else if(/phone number|mobile phone/.test(n))key='mobile';
  return approved.find(a=>normalize(a.question)===key)?.answer;
 }
-function advertisedSalaryFromText(text){
- // Only infer a target from a clearly stated annual salary range.
- const match=String(text||'').match(/\$\s*([\d,.]+)\s*(k)?\s*(?:\/\s*yr|per year|annually)?\s*[-–]\s*\$\s*([\d,.]+)\s*(k)?\s*(?:\/\s*yr|per year|annually)?/i);
- if(!match)return null;
- const min=Number(match[1].replace(/,/g,''))*(match[2]?1000:1);
- const max=Number(match[3].replace(/,/g,''))*(match[4]?1000:1);
- if(min<40000||max>2000000||max<min)return null;
- return salaryRequest({min,max}).amount;
-}
 const FORM_SELECTOR='[data-lilly-application="true"]';
 async function fieldsOnPage(page){
  return page.evaluate(()=>{
@@ -72,9 +64,19 @@ async function fieldsOnPage(page){
   const normalizeText=s=>String(s||'').replace(/\s+/g,' ').replace(/\s*\*\s*$/,'').trim();
   return fields.map((el,index)=>{
    const fieldset=el.closest('fieldset');
+   let group=fieldset;
+   if(el.type==='radio'||el.type==='checkbox'){
+    for(let n=el.parentElement;n&&n!==dialog;n=n.parentElement){
+     const peers=[...n.querySelectorAll('input')].filter(x=>x.type===el.type&&x.name===el.name);
+     if(peers.length>1&&/[*?]/.test(n.innerText||'')){group=n;break;}
+    }
+   }
+   const groupText=(group?.innerText||'').split(/\n/).map(s=>s.trim()).filter(Boolean);
+   const questionText=groupText.slice(0,groupText.findIndex(s=>/^(yes|no|[0-9]+.*years?)$/i.test(s))<0?1:groupText.findIndex(s=>/^(yes|no|[0-9]+.*years?)$/i.test(s))).join(' ');
+
    const wrapper=el.closest('.fb-dash-form-element, .jobs-easy-apply-form-element, .artdeco-text-input, .fb-dash-form-element-group');
    const label=normalizeText(
-    (el.type==='radio'||el.type==='checkbox'?fieldset?.querySelector('legend')?.innerText:null)||
+    (el.type==='radio'||el.type==='checkbox'?fieldset?.querySelector('legend')?.innerText||questionText:null)||
     el.getAttribute('aria-label')||
     el.labels?.[0]?.innerText||
     (el.getAttribute('aria-labelledby')||'').split(/\s+/).map(id=>document.getElementById(id)?.innerText).filter(Boolean).join(' ')||
@@ -84,7 +86,7 @@ async function fieldsOnPage(page){
    );
    const required=el.required||el.getAttribute('aria-required')==='true'||
     !!wrapper?.querySelector('label .visually-hidden, .fb-dash-form-element__label .visually-hidden')||
-    /[*]\s*$/.test(el.labels?.[0]?.innerText||'')||/[*]\s*$/.test(fieldset?.querySelector('legend')?.innerText||'');
+    /[*]\s*$/.test(el.labels?.[0]?.innerText||'')||/[*]\s*$/.test(fieldset?.querySelector('legend')?.innerText||'')||((el.type==='radio'||el.type==='checkbox')&&/[*]/.test(questionText));
    const filled=el.type==='radio'
     ? !![...dialog.querySelectorAll('input[type="radio"]')].find(other=>other.name===el.name&&other.checked)
     : el.type==='checkbox' ? el.checked
@@ -170,7 +172,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
      page=await context.newPage();
      activePage=page;
      // Abort a single slow job without blocking the remaining queue.
-     watchdog=setTimeout(()=>{timedOut=true;void page.close().catch(()=>{})},120000);
+     watchdog=setTimeout(()=>{timedOut=true;void page.close().catch(()=>{})},240000);
      setStage('opening_job');
      await page.goto(job.url,{waitUntil:'domcontentloaded',timeout:25000});
      await page.locator('h1').first().waitFor({state:'visible',timeout:9000}).catch(()=>{});
@@ -187,7 +189,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       submittedIds.add(job.id);
       results.push({jobId:job.id,status:'already_applied_logged',logged:logged.added});continue;
      }
-     const advertisedSalary=advertisedSalaryFromText(currentJobStatus)??(Number(job.salaryRequest)>=120000?Number(job.salaryRequest):null);
+     let advertisedSalary=null;
      setStage('archiving_job_posting');
      const archive=await archivePosting(page,job);
      if(!archive.ok){
@@ -198,6 +200,12 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
      if(/active top secret|top secret.{0,35}must have clearance to start/i.test(postingText)&&/not currently|^no$/i.test(lookupAnswer('Security clearance held?',approved)||'')){
       results.push({jobId:job.id,status:'excluded_qualification',reason:'Active Top Secret clearance required; approved answer says no current clearance'});continue;
      }
+     setStage('resolving_salary_baseline');
+     let salaryBaseline=annualSalaryRange(currentJobStatus+'\n'+postingText);
+     if(!salaryBaseline)salaryBaseline=await researchComparableSalary(context,job);
+     advertisedSalary=salaryRequest(salaryBaseline).amount;
+     job.salaryRequest=advertisedSalary;
+     await setSalaryBaseline(job,salaryBaseline,advertisedSalary);
      const resumeVersion=ledger.find(x=>x.id===job.id)?.resumeVersion||job.resumeVersion||'';
      const packet=resumeVersion?await exportResumePacket({...job,resumeVersion}):null;
      let packetSelected=false;
@@ -278,6 +286,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       setStage('matching_approved_answers');
       for(const f of fields){
        // Trust pre-filled values from the user's prior applications; never overwrite them.
+       if(packetSelected&&f.type==='file')continue;
        if(!f.required||f.filled)continue;
        const answer=lookupAnswer(f.label,approved,advertisedSalary);
        // Only fill clearly labeled text-like fields. No guessed dropdown, radio, checkbox, file or identity answers.
@@ -289,19 +298,22 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
          }else if(f.type==='radio'){
           const wanted=normalize(answer);
           const group=page.locator('[data-lilly-application="true"] input[type="radio"]').filter({visible:true});
-          const names=await group.evaluateAll(nodes=>nodes.map(n=>({name:n.name,value:n.value,label:n.labels?.[0]?.innerText||''})));
+          const names=await group.evaluateAll(nodes=>nodes.map(n=>({name:n.name,value:n.value,label:n.labels?.[0]?.innerText||n.closest('label')?.innerText||n.parentElement?.innerText||n.getAttribute('aria-label')||''})));
           const selected=names.findIndex(x=>x.name===f.name&&(normalize(x.value)===wanted||normalize(x.label)===wanted));
           if(selected<0)throw Error('No exact approved radio choice');
           await group.nth(selected).check({timeout:2500});
          }else if(f.tag==='select'){
-          await input.selectOption({label:String(answer)},{timeout:2500});
+          const choices=await input.evaluate(n=>[...n.options].map(o=>({label:o.textContent,value:o.value})));
+          const choice=choices.find(o=>normalize(o.label)===normalize(answer)||normalize(o.value)===normalize(answer))||(/salary|compensation|pay/i.test(f.label)&&Number(answer)>0?salaryChoice(choices,Number(answer)):null);
+          if(!choice)throw Error('No matching approved select choice');
+          await input.selectOption({value:choice.value},{timeout:2500});
          }else throw Error('Unsupported field type');
         }catch{missing.push(f)}
        }else missing.push(f);
       }
       if(missing.length){setStage('collecting_unanswered_questions');
        unknown=[...new Set(missing.map(x=>x.label||('Unlabeled required '+x.type+' field')))];
-       diagnostic={page:step+1,visibleFields:fields.length,unfilledRequired:missing.length,reason:'required_answers_missing',missing:missing.map(f=>({label:f.label,type:f.type})),choices:await page.locator(FORM_SELECTOR+' input[type=radio]').evaluateAll(ns=>ns.map(n=>({name:n.name,value:n.value,label:n.labels?.[0]?.innerText||''})))};
+       diagnostic={page:step+1,visibleFields:fields.length,unfilledRequired:missing.length,reason:'required_answers_missing',missing:missing.map(f=>({label:f.label,type:f.type})),fields:fields.map(f=>({label:f.label,type:f.type,name:f.name,required:f.required,filled:f.filled})),choices:await page.locator(FORM_SELECTOR+' input[type=radio],'+FORM_SELECTOR+' select').evaluateAll(ns=>ns.map(n=>({name:n.name,value:n.type==='radio'?n.value:null,label:n.labels?.[0]?.innerText||n.closest('label')?.innerText||n.parentElement?.innerText||n.getAttribute('aria-label')||'',options:n.options?[...n.options].map(o=>({label:o.textContent,value:o.value})):[]})))};
        status='needs_answers';break;
       }
       const dialog=page.locator(FORM_SELECTOR);
