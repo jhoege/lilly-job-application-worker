@@ -7,6 +7,7 @@ import { checkAnswerConnector, smsJobSummary, smsRecordAnswer } from './google-a
 import { startQuestionAlerts } from './question-alerts.js';
 import { startAutoTriage } from './auto-triage.js';
 import { handleSmsCommand } from './sms-operations.js';
+import {archivePosting} from './posting-archive.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -27,6 +28,21 @@ app.post('/internal/sms-command', express.json({limit:'2kb'}), async(req,res)=>{
   const reply=await handleSmsCommand(message,req.body?.requestId,browserContext);
   return res.json({reply});
  }catch(e){console.error('[sms-command]',String(e.message).slice(0,100));return res.status(503).json({reply:'Lilly Jobs is temporarily unable to access the application tracker.'})}
+});
+app.post('/internal/archive-test',express.json({limit:'1kb'}),async(req,res)=>{
+ const secret=process.env.JOB_ALERT_SHARED_SECRET||'',provided=String(req.get('authorization')||'').replace(/^Bearer /i,'');
+ const a=Buffer.from(secret),b=Buffer.from(provided);
+ if(!secret||a.length!==b.length||!crypto.timingSafeEqual(a,b))return res.sendStatus(403);
+ if(!browserContext)return res.status(503).json({ok:false,reason:'browser_not_ready'});
+ const id=String(req.body?.jobId||'');
+ if(!/^[0-9]{8,12}$/.test(id))return res.sendStatus(400);
+ const page=await browserContext.newPage();
+ try{
+  await page.goto('https://www.linkedin.com/jobs/view/'+id+'/',{waitUntil:'domcontentloaded',timeout:25000});
+  const result=await archivePosting(page,{id,url:page.url(),company:'LinkedIn',title:'Posting'});
+  res.status(result.ok?200:502).json(result);
+ }catch(e){res.status(502).json({ok:false,reason:String(e.message).slice(0,120)})}
+ finally{await page.close().catch(()=>{})}
 });
 app.get('/health', (_req, res) => {
   res.status(200).json({
