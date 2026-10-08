@@ -44,7 +44,7 @@ function advertisedSalaryFromText(text){
 const FORM_SELECTOR='[data-lilly-application="true"]';
 async function fieldsOnPage(page){
  return page.evaluate(()=>{
-  const candidates=[...document.querySelectorAll('[data-lilly-application="true"],[role="dialog"]')];
+  const candidates=[...document.querySelectorAll('.jobs-easy-apply-modal,[role="dialog"]')];
   for(const el of candidates)el.removeAttribute('data-lilly-application');
   const ranked=candidates.map(d=>{
    const buttons=[...d.querySelectorAll('button')].map(b=>(b.innerText||b.getAttribute('aria-label')||'').trim()).filter(Boolean);
@@ -237,13 +237,13 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
        const answer=lookupAnswer(f.label,approved,advertisedSalary);
        // Only fill clearly labeled text-like fields. No guessed dropdown, radio, checkbox, file or identity answers.
        if(answer!==undefined&&f.label){
-        const input=page.locator(`FORM_SELECTOR` input:not([type="hidden"]), [data-lilly-application="true"] textarea, [data-lilly-application="true"] select').filter({visible:true}).nth(f.index);
+        const input=page.locator('[data-lilly-application="true"] input:not([type="hidden"]), [data-lilly-application="true"] textarea, [data-lilly-application="true"] select').filter({visible:true}).nth(f.index);
         try{
          if(['text','email','tel','number','textarea'].includes(f.type)){
           await input.fill(String(answer),{timeout:2500});
          }else if(f.type==='radio'){
           const wanted=String(answer).trim().toLowerCase();
-          const group=page.locator(`FORM_SELECTOR` input[type="radio"]').filter({visible:true});
+          const group=page.locator('[data-lilly-application="true"] input[type="radio"]').filter({visible:true});
           const names=await group.evaluateAll(nodes=>nodes.map(n=>({name:n.name,value:n.value,label:n.labels?.[0]?.innerText||''})));
           const selected=names.findIndex(x=>x.name===f.name&&(normalize(x.value)===wanted||normalize(x.label)===wanted));
           if(selected<0)throw Error('No exact approved radio choice');
