@@ -149,9 +149,20 @@ function summarizeTasks(tasks, mode) {
   return `${top.join(' ')}${more}`.slice(0, 1500);
 }
 
+async function jobsCommand(message){
+ const endpoint=process.env.JOB_WORKER_URL,secret=process.env.JOB_ALERT_SHARED_SECRET;
+ if(!endpoint||!secret)return 'Jobs connector is not configured. Contact Lilly administrator.';
+ const url=new URL('/internal/sms-command',endpoint);
+ if(url.protocol!=='https:')throw Error('Jobs endpoint must be HTTPS');
+ const response=await fetch(url,{method:'POST',headers:{Authorization:'Bearer '+secret,'Content-Type':'application/json'},body:JSON.stringify({message}),signal:AbortSignal.timeout(15000)});
+ const data=await response.json().catch(()=>({}));
+ if(!response.ok)throw Error('Jobs connector HTTP '+response.status);
+ return String(data.reply||'Jobs connector returned no response').slice(0,1400);
+}
+
 async function routeMessage(body) {
   const n = String(body || '').trim().toLowerCase();
-  if (n === 'help') return 'Commands: HELP, STATUS, TASKS, PAST DUE, DUE TODAY, CALENDAR, BILLS, JOBS.';
+  if (n === 'help') return 'Commands: HELP, STATUS, TASKS, PAST DUE, DUE TODAY, CALENDAR, BILLS, JOBS, JOBS QUESTIONS, ANSWER QID text.';
   if (n === 'status') return 'Lilly SMS gateway is online and your number is authorized.';
   if (n === 'hello' || n === 'hi' || n.startsWith('hello lilly')) return 'Hello. Text HELP for available commands.';
   if (n.includes('past due')) return summarizeTasks(await fetchTasks(), 'past-due');
@@ -159,7 +170,7 @@ async function routeMessage(body) {
   if (n === 'tasks' || n.includes('task')) return summarizeTasks(await fetchTasks(), 'all');
   if (n.includes('calendar') || n.includes('schedule')) return 'Calendar command recognized. Calendar connector is not yet linked to this gateway.';
   if (n.includes('bill')) return 'Bills command recognized. Bills connector is not yet linked to this gateway.';
-  if (n.includes('job')) return 'Jobs command recognized. Jobs connector is not yet linked to this gateway.';
+  if (n.startsWith('job') || n.startsWith('answer ')) return jobsCommand(String(body||''));
   return 'Request received but not supported by text yet. Text HELP for available commands.';
 }
 
