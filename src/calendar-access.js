@@ -46,6 +46,7 @@ export function calendarQuery(text,now=new Date()){
 export async function calendarReply(text){
  const c=await calendarConnection();
  if(!c.connected)return 'Lilly calendar: Google authorization is needed. Open '+CONNECT+' and choose Connect Google Calendar (read only). Outlook is not connected to SMS yet.';
+ if(/^(?:calendar\s+)?status$/i.test(String(text||'').trim()))return 'Lilly calendar: Google live access is connected ('+c.calendars.length+' calendars). Outlook is not connected to SMS.';
  const query=calendarQuery(text),events=[],failures=[];
  await Promise.all(c.calendars.filter(x=>!/#holiday@/.test(x.id)).slice(0,20).map(async cal=>{
   try{

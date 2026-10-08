@@ -75,11 +75,18 @@ async function fieldsOnPage(page){
     }
    }
    const groupText=(group?.innerText||'').split(/\n/).map(s=>s.trim()).filter(Boolean);
+   let checkboxQuestion='';
+   if(el.type==='checkbox')for(let n=el.parentElement;n&&n!==dialog;n=n.parentElement){
+    if(n.querySelectorAll('input[type=checkbox]').length>1)break;
+    const lines=(n.innerText||'').split(/\n/).map(x=>x.trim()).filter(Boolean);
+    const question=lines.find(x=>/[*]\s*$/.test(x)||/^You declare that/i.test(x));
+    if(question){checkboxQuestion=question;break;}
+   }
    const questionText=groupText.slice(0,groupText.findIndex(s=>/^(yes|no|[0-9]+.*years?)$/i.test(s))<0?1:groupText.findIndex(s=>/^(yes|no|[0-9]+.*years?)$/i.test(s))).join(' ');
 
    const wrapper=el.closest('.fb-dash-form-element, .jobs-easy-apply-form-element, .artdeco-text-input, .fb-dash-form-element-group');
    const label=normalizeText(
-    (el.type==='radio'||el.type==='checkbox'?fieldset?.querySelector('legend')?.innerText||questionText:null)||
+    (el.type==='radio'||el.type==='checkbox'?checkboxQuestion||fieldset?.querySelector('legend')?.innerText||questionText:null)||
     el.getAttribute('aria-label')||
     el.labels?.[0]?.innerText||
     (el.getAttribute('aria-labelledby')||'').split(/\s+/).map(id=>document.getElementById(id)?.innerText).filter(Boolean).join(' ')||
@@ -89,7 +96,7 @@ async function fieldsOnPage(page){
    );
    const required=el.required||el.getAttribute('aria-required')==='true'||
     !!wrapper?.querySelector('label .visually-hidden, .fb-dash-form-element__label .visually-hidden')||
-    /[*]\s*$/.test(el.labels?.[0]?.innerText||'')||/[*]\s*$/.test(fieldset?.querySelector('legend')?.innerText||'')||((el.type==='radio'||el.type==='checkbox')&&/[*]/.test(questionText));
+    /[*]\s*$/.test(el.labels?.[0]?.innerText||'')||/[*]\s*$/.test(fieldset?.querySelector('legend')?.innerText||'')||((el.type==='radio'||el.type==='checkbox')&&/[*]/.test(checkboxQuestion||questionText));
    const filled=el.type==='radio'
     ? !![...dialog.querySelectorAll('input[type="radio"]')].find(other=>other.name===el.name&&(other.checked||other.closest('[role=radio]')?.getAttribute('aria-checked')==='true'))
     : el.type==='checkbox' ? el.checked||el.closest('[role=checkbox]')?.getAttribute('aria-checked')==='true'
@@ -320,6 +327,8 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
           await checkNativeChoice(page,group.nth(selected),f.label);
          }else if(f.type==='checkbox'&&/indicate all shifts/i.test(f.label)&&/^I am open to any required hours and shifts/i.test(answer)){
           await checkNativeChoice(page,input,f.label);
+         }else if(f.type==='checkbox'&&/^(yes|i consent|i agree|true)$/i.test(String(answer).trim())){
+          await checkNativeChoice(page,input,f.label);
          }else if(f.tag==='select'){
           const choices=await input.evaluate(n=>[...(n.options||[])].map(o=>({label:o.textContent,value:o.value})),null,{timeout:1200});
           const choice=choices.find(o=>normalize(o.label)===normalize(answer)||normalize(o.value)===normalize(answer))||(/salary|compensation|pay/i.test(f.label)&&Number(answer)>0?salaryChoice(choices,Number(answer)):null);
@@ -347,7 +356,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
         // Re-check submitted IDs immediately before submitting to avoid a stale queue.
         if((await readSubmittedJobIds()).has(job.id)){status='already_applied_logged';break}
         if(excludedApplication((await readApplicationLedger()).find(j=>j.id===job.id)?.status)){status='skipped_excluded';break}
-        if(packet&&(!packetSelected||!await verifyResumeSelection(page,FORM_SELECTOR,packet.name))){status='submission_blocked';diagnostic={reason:'Exact approved resume selection not verified on review'};break;}
+        if(packet&&(!packetSelected||!await verifyResumeSelection(page,FORM_SELECTOR,packet.name))){status='submission_blocked';diagnostic={reason:'Exact approved resume selection not verified on review',packetName:packet.name,form:await formDiagnostic(page)};break;}
         const validation=await page.evaluate(()=>{
          const dialog=document.querySelector('[data-lilly-application="true"]');
          if(!dialog)return {invalid:1,reason:'Application dialog missing'};
@@ -431,7 +440,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
 
 
 
-async function formDiagnostic(page){return page.locator(FORM_SELECTOR).evaluate(d=>({text:(d.innerText||'').slice(0,2200),files:[...d.querySelectorAll('input[type=file]')].map(n=>({accept:n.accept,required:n.required})),radios:[...d.querySelectorAll('input[type=radio]')].map(n=>({label:n.labels?.[0]?.innerText,checked:n.checked,value:n.value}))})).catch(()=>({}));}
+async function formDiagnostic(page){return page.locator(FORM_SELECTOR).evaluate(d=>({text:(d.innerText||'').slice(0,2200),files:[...d.querySelectorAll('input[type=file]')].map(n=>({accept:n.accept,required:n.required})),radios:[...d.querySelectorAll('input[type=radio]')].map(n=>({label:n.labels?.[0]?.innerText,checked:n.checked,value:n.value})),attachments:[...d.querySelectorAll('a,[title],[aria-label]')].map(n=>({text:n.innerText?.slice(0,160),title:n.title,label:n.getAttribute('aria-label'),href:n.getAttribute('href')})).filter(n=>/pdf|resume|Lilly/i.test(JSON.stringify(n))).slice(0,15),checkboxes:[...d.querySelectorAll('input[type=checkbox]')].map(n=>({checked:n.checked,html:n.closest('[role=checkbox]')?.outerHTML?.slice(0,1800)}))})).catch(()=>({}));}
 async function advanceForm(page,button){
  const before=await page.locator(FORM_SELECTOR).innerText();
  await button.click({timeout:5000});
@@ -467,7 +476,7 @@ async function checkNativeChoice(page,input,question){
  if(!clicked)await input.check({timeout:2500});
  const checked=await page.waitForFunction(({text,question})=>{
   const norm=s=>String(s||'').replace(/\s+/g,' ').replace(/\s*\*/g,'').trim();
-  const d=document.querySelector('[data-lilly-application="true"]')||document.querySelector('dialog[open]');
+  const d=document.querySelector('[data-lilly-application="true"]')||[...document.querySelectorAll('dialog,[role=dialog]')].find(d=>d.getClientRects().length&&norm(d.innerText).includes(norm(question)));
   if(!d)return false;
   return [...d.querySelectorAll('input[type=radio],input[type=checkbox]')].some(n=>{
    const role=n.closest('[role=radio],[role=checkbox]');

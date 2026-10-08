@@ -166,7 +166,7 @@ async function routeMessage(body,requestId) {
   if(isJobCommand(cmd))return jobsCommand(String(body||''),requestId);
   if(cmd.kind==='help')return helpText(process.env);
   if(cmd.kind==='calendar')return jobsCommand(String(body||''),requestId);
-  if(cmd.kind==='status')return 'Lilly SMS is online. Jobs worker '+(process.env.JOB_WORKER_URL&&process.env.JOB_ALERT_SHARED_SECRET?'configured':'not configured')+'. Calendar/email bridge '+(process.env.PERSONAL_ASSISTANT_URL&&process.env.PERSONAL_ASSISTANT_SECRET?'configured':'not connected')+'. JOBS STATUS checks processing.';
+  if(cmd.kind==='status')return 'Lilly SMS is online. Jobs worker '+(process.env.JOB_WORKER_URL&&process.env.JOB_ALERT_SHARED_SECRET?'configured':'not configured')+'. Calendar lookup is configured; CALENDAR STATUS checks live access. Email/briefing bridge '+(process.env.PERSONAL_ASSISTANT_URL&&process.env.PERSONAL_ASSISTANT_SECRET?'configured':'not connected')+'. JOBS STATUS checks processing.';
   if(cmd.kind==='hello'||cmd.kind==='hi')return 'Hello. Text HELP for available commands.';
   if(cmd.kind==='past_due')return summarizeTasks(await fetchTasks(),'past-due');
   if(cmd.kind==='due_today')return summarizeTasks(await fetchTasks(),'due-today');
@@ -259,4 +259,5 @@ app.listen(port, '0.0.0.0', () => {
 
 
 
+void routeMessage('CALENDAR STATUS','self-test-calendar').then(reply=>console.log('[sms-calendar-self-test] '+JSON.stringify({command:'CALENDAR STATUS',reply}))).catch(e=>console.error('[sms-calendar-self-test] '+String(e.message).slice(0,100)));
 void routeMessage('/help','self-test-help').then(reply=>console.log('[sms-help-self-test] '+JSON.stringify({command:'/help',reply}))).catch(e=>console.error('[sms-help-self-test] '+String(e.message).slice(0,100)));
