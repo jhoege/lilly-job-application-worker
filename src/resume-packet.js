@@ -43,7 +43,14 @@ export async function uploadResumePacket(page,selector,packet){
   if(await verifyResumeSelection(page,selector,packet.name))return {ok:true};
   let choices=await resumeChoices(page,selector,packet.name,true);
   if(!choices.matching){
-   await page.locator(selector+' input[type=file]').first().setInputFiles({name:packet.name,mimeType:packet.mimeType,buffer:packet.buffer},{timeout:10000});
+   const file={name:packet.name,mimeType:packet.mimeType,buffer:packet.buffer};
+   const input=page.locator(selector+' input[type=file]').first();
+   if(await input.count())await input.setInputFiles(file,{timeout:10000});
+   else{
+    const upload=page.locator(selector).getByRole('button',{name:/upload resume/i}).first();
+    const [chooser]=await Promise.all([page.waitForEvent('filechooser',{timeout:5000}),upload.click({timeout:4000})]);
+    await chooser.setFiles(file,{timeout:10000});
+   }
    await page.locator(selector).getByText(packet.name,{exact:false}).first().waitFor({state:'visible',timeout:15000});
    choices=await resumeChoices(page,selector,packet.name,true);
   }

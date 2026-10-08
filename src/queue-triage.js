@@ -251,7 +251,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
      await setSalaryBaseline(job,salaryBaseline,advertisedSalary);
      const resumeVersion=ledger.find(x=>x.id===job.id)?.resumeVersion||job.resumeVersion||'';
      const packet=resumeVersion?await exportResumePacket({...job,resumeVersion}):null;
-     let packetSelected=false;
+     let packetSelected=false,resumeRepairAttempted=false;
      setStage('opening_application');
      await easy.click({timeout:8000});
      let modalReady=false;
@@ -288,7 +288,8 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       const fields=await fieldsOnPage(page);
       if(!fields){status='form_unavailable';break}
       const missing=[],fillErrors=[],unknownFields=[];
-      if(packet&&!packetSelected&&await page.locator(FORM_SELECTOR+' input[type=file]').count()){
+      const resumePage=packet&&!packetSelected&&await page.locator(FORM_SELECTOR).evaluate(d=>/^Resume\s*[*]?$/m.test(d.innerText||'')&&![...d.querySelectorAll('button')].some(b=>/^submit application$/i.test((b.innerText||'').trim())));
+      if(packet&&!packetSelected&&(resumePage||await page.locator(FORM_SELECTOR+' input[type=file]').count())){
        const uploaded=await uploadResumePacket(page,FORM_SELECTOR,packet);
        if(!uploaded.ok){status='needs_manual_review';diagnostic={reason:uploaded.reason};break;}
        packetSelected=true;
@@ -356,7 +357,10 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
         // Re-check submitted IDs immediately before submitting to avoid a stale queue.
         if((await readSubmittedJobIds()).has(job.id)){status='already_applied_logged';break}
         if(excludedApplication((await readApplicationLedger()).find(j=>j.id===job.id)?.status)){status='skipped_excluded';break}
-        if(packet&&(!packetSelected||!await verifyResumeSelection(page,FORM_SELECTOR,packet.name))){status='submission_blocked';diagnostic={reason:'Exact approved resume selection not verified on review',packetName:packet.name,form:await formDiagnostic(page)};break;}
+        if(packet&&(!packetSelected||!await verifyResumeSelection(page,FORM_SELECTOR,packet.name))){
+         const edit=page.locator(FORM_SELECTOR).getByRole('button',{name:/^Edit Resume$/i});
+         if(!resumeRepairAttempted&&await edit.isVisible().catch(()=>false)){resumeRepairAttempted=true;packetSelected=false;await edit.click({timeout:4000});await page.waitForTimeout(700);continue;}
+         status='submission_blocked';diagnostic={reason:'Exact approved resume selection not verified on review',packetName:packet.name,form:await formDiagnostic(page)};break;}
         const validation=await page.evaluate(()=>{
          const dialog=document.querySelector('[data-lilly-application="true"]');
          if(!dialog)return {invalid:1,reason:'Application dialog missing'};
