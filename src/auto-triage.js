@@ -27,6 +27,7 @@ export async function runAutoTriage(context,{force=false}={}){
    const existingIds=new Set(ledger.map(x=>x.id));
    const submittedIds=new Set(ledger.filter(x=>verifiedSubmission(x.status)).map(x=>x.id));
    const jobsById=new Map(original.map(j=>[j.id,j]));
+   for(const entry of ledger)if(jobsById.has(entry.id))jobsById.set(entry.id,{...jobsById.get(entry.id),...entry});
    for(const entry of ledger){
     if(!verifiedSubmission(entry.status)&&!uncertainSubmission(entry.status)&&!excludedApplication(entry.status)&&entry.url&&/^https:\/\/www\.linkedin\.com\/jobs\/view\/\d{8,12}\/?$/.test(entry.url)&&!jobsById.has(entry.id))jobsById.set(entry.id,{...entry,submitted:false});
    }

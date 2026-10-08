@@ -134,7 +134,7 @@ export async function logVerifiedLinkedInApplication(job){
 
 const SHEETS_BASE='https://sheets.googleapis.com/v4/spreadsheets/'+SHEET_ID+'/values/';
 async function ledgerRows(access){
- const range=encodeURIComponent("'Applications'!A1:K2000");
+ const range=encodeURIComponent("'Applications'!A1:Q2000");
  const response=await fetch(SHEETS_BASE+range,{headers:{Authorization:'Bearer '+access},signal:AbortSignal.timeout(12000)});
  if(!response.ok)throw Error('Application ledger read failed HTTP '+response.status);
  return (await response.json()).values||[];
@@ -142,7 +142,7 @@ async function ledgerRows(access){
 export async function readApplicationLedger(){
  const access=await token();
  const rows=await ledgerRows(access);
- return rows.slice(1).filter(r=>r[0]).map(r=>({id:String(r[0]),company:r[2]||'',title:r[3]||'',status:r[4]||'',salaryRequest:r[5]||null,url:r[8]||'',reason:r[9]||'',source:r[10]||''}));
+ return rows.slice(1).filter(r=>r[0]).map(r=>({id:String(r[0]),company:r[2]||'',title:r[3]||'',status:r[4]||'',salaryRequest:r[5]||null,url:r[8]||'',reason:r[9]||'',source:r[10]||'',resumeVersion:r[15]||''}));
 }
 export async function upsertApplicationStatus(job,status,reason='',extra={}){
  const id=String(job?.id||'').trim();

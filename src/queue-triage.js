@@ -191,6 +191,11 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       results.push({jobId:job.id,status:'needs_manual_review',reason:'Posting PDF archive failed: '+archive.reason});
       continue;
      }
+     const resumeVersion=ledger.find(x=>x.id===job.id)?.resumeVersion||job.resumeVersion||'';
+     if(resumeVersion){
+      results.push({jobId:job.id,status:'needs_manual_review',reason:'Application specifies a resume version, but exact packet selection/upload is not implemented. No default resume substituted.'});
+      continue;
+     }
      setStage('finding_easy_apply');
      // LinkedIn uses both native buttons and custom aria-labels for Easy Apply.
      // Inspect multiple grounded controls; do not infer availability from an incomplete load.

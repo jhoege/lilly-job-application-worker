@@ -11,7 +11,8 @@ export async function processSearchBatch(context,primaryResults=[],dependencies=
    const current=ledger.find(x=>x.id===id);
    const reason=current?.reason||primary.reason||primary.status;
    const status=primary.status==='submitted_verified'?'Applied':current?.status||'Saved - application blocked';
-   await dependencies.recordSearchAttempt(url,status,reason);
+   try{await dependencies.recordSearchAttempt(url,status,reason);}
+   catch(e){console.log('[search-batch-sync] '+JSON.stringify({url,status,reason,ledgerError:String(e.message).slice(0,140)}));}
    continue;
   }
   let page,result={company:row[3],title:row[4],url,status:'Saved - application blocked',reason:''};
