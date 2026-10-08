@@ -1,5 +1,5 @@
 import {getQueue} from './application-support.js';
-import {readApprovedAnswers,appendUnknownQuestions,readSubmittedJobIds} from './google-answers.js';
+import {readApprovedAnswers,appendUnknownQuestions,readSubmittedJobIds,logVerifiedLinkedInApplication} from './google-answers.js';
 let running=false;
 let cancelRequested=false;
 let activePage=null;
@@ -75,7 +75,10 @@ export async function triageQueue(context,{limit=5,offset=0}={}){
      setStage('checking_linkedin_application_status');
      const currentJobStatus=await page.locator('main').first().innerText({timeout:4000}).catch(()=>'');
      if(/application status[\s\S]{0,100}application submitted/i.test(currentJobStatus)){
-      results.push({jobId:job.id,status:'already_applied'});continue;
+      setStage('recording_verified_application');
+      const logged=await logVerifiedLinkedInApplication(job);
+      submittedIds.add(job.id);
+      results.push({jobId:job.id,status:'already_applied_logged',logged:logged.added});continue;
      }
      setStage('finding_easy_apply');
      // LinkedIn uses both native buttons and custom aria-labels for Easy Apply.
