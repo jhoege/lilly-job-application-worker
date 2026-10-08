@@ -45,52 +45,62 @@
     {
       "linkedinJobId": "4472883287",
       "url": "https://www.linkedin.com/jobs/view/4472883287/",
-      "status": "needs_verification",
-      "company": null,
-      "title": null,
-      "easyApply": null,
+      "status": "inspected_needs_application_review",
+      "company": "Jobgether",
+      "title": "Director of Operations",
+      "easyApply": true,
       "salary": null,
-      "submitted": false
+      "submitted": false,
+      "salaryRequest": null,
+      "workArrangement": "remote"
     },
     {
       "linkedinJobId": "4470079202",
       "url": "https://www.linkedin.com/jobs/view/4470079202/",
-      "status": "needs_verification",
-      "company": null,
-      "title": null,
-      "easyApply": null,
+      "status": "inspected_needs_application_review",
+      "company": "Lyra Health",
+      "title": "Director, Operations - Provider Performance",
+      "easyApply": true,
       "salary": null,
-      "submitted": false
+      "submitted": false,
+      "salaryRequest": 171500,
+      "workArrangement": "remote"
     },
     {
       "linkedinJobId": "4472624995",
       "url": "https://www.linkedin.com/jobs/view/4472624995/",
-      "status": "needs_verification",
-      "company": null,
-      "title": null,
-      "easyApply": null,
+      "status": "inspected_needs_application_review",
+      "company": "Agile Defense",
+      "title": "Navy Delivery Director",
+      "easyApply": true,
       "salary": null,
-      "submitted": false
+      "submitted": false,
+      "salaryRequest": 171250,
+      "workArrangement": "remote"
     },
     {
       "linkedinJobId": "4470470211",
       "url": "https://www.linkedin.com/jobs/view/4470470211/",
-      "status": "needs_verification",
-      "company": null,
-      "title": null,
-      "easyApply": null,
+      "status": "inspected_needs_application_review",
+      "company": "Grove Point Marinas",
+      "title": "Director of Operations",
+      "easyApply": true,
       "salary": null,
-      "submitted": false
+      "submitted": false,
+      "salaryRequest": null,
+      "workArrangement": "remote"
     },
     {
       "linkedinJobId": "4474958471",
       "url": "https://www.linkedin.com/jobs/view/4474958471/",
-      "status": "needs_verification",
-      "company": null,
-      "title": null,
-      "easyApply": null,
+      "status": "inspected_needs_application_review",
+      "company": "Blue Lake Consulting Group",
+      "title": "Director of Operations",
+      "easyApply": true,
       "salary": null,
-      "submitted": false
+      "submitted": false,
+      "salaryRequest": null,
+      "workArrangement": "on-site, Greater Madison Area"
     },
     {
       "linkedinJobId": "4474499407",
