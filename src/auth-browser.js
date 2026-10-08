@@ -30,7 +30,13 @@ async function refreshTriageStatus(){
   const j=await r.json();
   $('triage').disabled=!!j.running;
   $('stoptriage').hidden=!j.running;
-  $('triageprogress').textContent=j.running?'Working: '+j.processed+'/'+j.total+' processed; current job '+(j.currentJob||'starting'):'Triage idle'+(j.lastResult?' — last run finished':'');
+  const stage=String(j.stage||'idle').replaceAll('_',' ');
+  const elapsed=j.stageSince?Math.max(0,Math.floor((Date.now()-Date.parse(j.stageSince))/1000)):0;
+  const last=(j.results||[]).slice(-1)[0];
+  $('triageprogress').textContent=j.running
+   ? 'Working: '+j.processed+'/'+j.total+' processed; current job '+(j.currentJob||'starting')+'; stage: '+stage+' ('+elapsed+'s)'+(elapsed>120?' — stage may be stuck; you can stop safely':'')
+   : 'Triage '+stage+(last?' — last job '+last.jobId+': '+last.status:'');
+  if(j.running&&j.results?.length){$('inspection').textContent=JSON.stringify({liveResults:j.results},null,2)}
   if(j.lastResult&&JSON.stringify(j.lastResult)!==$('inspection').dataset.lastResult){
    $('inspection').textContent=JSON.stringify(j.lastResult,null,2);
    $('inspection').dataset.lastResult=JSON.stringify(j.lastResult);
