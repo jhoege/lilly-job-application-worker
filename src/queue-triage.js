@@ -196,7 +196,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
      // Wait for real form controls instead of treating the loading shell as an empty application.
      setStage('waiting_for_application_fields');
      await page.waitForFunction(()=>{
-      const d=document.querySelector('[role="dialog"], .jobs-easy-apply-modal, .artdeco-modal');
+      const d=document.querySelector('.jobs-easy-apply-modal');
       return !!d&&(d.querySelectorAll('input:not([type="hidden"]),select,textarea').length>0||
         [...d.querySelectorAll('button')].some(b=>/next|review|submit application|continue/i.test(b.innerText||'')));
      },null,{timeout:9000}).catch(()=>{});
