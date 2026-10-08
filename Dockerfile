@@ -6,6 +6,7 @@ COPY package*.json ./
 RUN npm install --omit=dev
 
 COPY src ./src
+COPY data ./data
 
 ENV NODE_ENV=production
 ENV BROWSER_PROFILE_PATH=/data/browser-profile
