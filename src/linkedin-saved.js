@@ -11,6 +11,11 @@ export async function discoverSavedLinkedInJobs(context){
    await page.waitForTimeout(1600);
    if(await page.locator('input[name="session_key"],input#username').count())
     return {status:'login_required',jobs:[]};
+   // Saved jobs can lazy-load as the list scrolls.
+   for(let i=0;i<4;i++){
+    await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight)).catch(()=>{});
+    await page.waitForTimeout(650);
+   }
    const saved=await page.evaluate(()=>{
     const links=[...document.querySelectorAll('a[href*="/jobs/view/"],a[href*="currentJobId="]')];
     const jobs=new Map();
