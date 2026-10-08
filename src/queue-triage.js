@@ -23,7 +23,12 @@ async function fieldsOnPage(page){
    const parent=el.closest('fieldset');
    const label=(el.labels?.[0]?.innerText||el.getAttribute('aria-label')||parent?.querySelector('legend')?.innerText||el.getAttribute('placeholder')||'').replace(/\\s+/g,' ').trim();
    const required=el.required||el.getAttribute('aria-required')==='true'||!!el.closest('.fb-dash-form-element')?.querySelector('.fb-dash-form-element__label .visually-hidden');
-   const filled=el.type==='checkbox'||el.type==='radio'?el.checked:!!String(el.value||'').trim();
+   const filled=el.type==='radio'
+    ? !![...dialog.querySelectorAll('input[type="radio"]')].find(other=>other.name===el.name&&other.checked)
+    : el.type==='checkbox' ? el.checked
+    : el.type==='select-one' ? !!el.value&&!/^(select|choose|please select)$/i.test(el.selectedOptions?.[0]?.textContent?.trim()||'')
+    : el.type==='file' ? !!el.files?.length
+    : !!String(el.value||'').trim();
    return {index,label:label.slice(0,350),type:el.type||el.tagName.toLowerCase(),required,filled};
   });
  });
