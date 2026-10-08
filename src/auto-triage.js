@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import crypto from 'node:crypto';
+import {readApprovedAnswers} from './google-answers.js';
 import path from 'node:path';
 import {getQueue} from './application-support.js';
 import {triageQueue} from './queue-triage.js';
@@ -11,13 +13,22 @@ export function startAutoTriage(getContext){
   busy=true;
   try{
    let state={};try{state=JSON.parse(fs.readFileSync(statePath,'utf8'))}catch{}
+   const approved=await readApprovedAnswers();
+   const fingerprint=crypto.createHash('sha256').update(JSON.stringify(approved.map(x=>[x.question,x.answer]).sort((a,b)=>a[0].localeCompare(b[0])))).digest('hex');
    const jobs=getQueue().filter(j=>!j.submitted&&j.status!=='closed_not_accepting_applications');
-   const eligible=jobs.filter(j=>!state[j.id]||Date.now()-state[j.id]>24*60*60*1000);
+   // Revisit blocked jobs as soon as approved answers change; otherwise limit retries.
+   const eligible=jobs.filter(j=>{
+    const entry=state[j.id];
+    if(!entry)return true;
+    const last=typeof entry==='number'?entry:entry.at;
+    const previous=typeof entry==='number'?'':entry.answers;
+    return previous!==fingerprint||Date.now()-last>24*60*60*1000;
+   });
    if(!eligible.length)return;
    const ids=eligible.slice(0,5).map(j=>j.id);
    const result=await triageQueue(getContext(),{limit:5,ids});
    for(const item of result.results||[]){
-    if(item.jobId)state[item.jobId]=Date.now();
+    if(item.jobId)state[item.jobId]={at:Date.now(),answers:fingerprint,status:item.status};
    }
    if(result.results?.length){
     fs.mkdirSync(path.dirname(statePath),{recursive:true});
