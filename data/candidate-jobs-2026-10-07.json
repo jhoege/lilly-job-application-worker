@@ -126,13 +126,14 @@
     {
       "linkedinJobId": "4468916221",
       "url": "https://www.linkedin.com/jobs/view/4468916221/",
-      "status": "inspected_needs_application_review",
+      "status": "submitted_verified",
       "company": "Boden Talent",
       "title": "Director of Operations",
       "easyApply": true,
       "salary": null,
-      "submitted": false,
-      "salaryRequest": 175000
+      "submitted": true,
+      "salaryRequest": 175000,
+      "confirmation": "LinkedIn success message screenshot supplied by user on 2026-10-07"
     },
     {
       "linkedinJobId": "4464628441",
