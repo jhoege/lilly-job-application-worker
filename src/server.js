@@ -87,6 +87,23 @@ async function initializeBrowser() {
     browserReady = true;
     browserError = null;
     console.log(`[browser] Chromium ready; profile=${profilePath}; testMode=${testMode}`);
+    if(process.env.ARCHIVE_CAPTURE_VERIFY_VERSION==='fulltext-v1'){
+      const record='/data/archive-fulltext-v1-result.json';
+      if(!fs.existsSync(record))void (async()=>{
+        let p,result;
+        try{
+          p=await browserContext.newPage();
+          const job={id:'4470079202',url:'https://www.linkedin.com/jobs/view/4470079202/',company:'Lyra Health',title:'Director Operations - Provider Performance'};
+          await p.goto(job.url,{waitUntil:'domcontentloaded',timeout:25000});
+          result=await archivePosting(p,job);
+        }catch(e){result={ok:false,reason:String(e.message).slice(0,120)}}
+        finally{
+          if(p)await p.close().catch(()=>{});
+          fs.writeFileSync(record,JSON.stringify({...result,checkedAt:new Date().toISOString()}),{mode:0o600});
+          console.log('[archive-fulltext-test] '+JSON.stringify(result));
+        }
+      })();
+    }
     if(process.env.SMS_REPAIR_PILOT_VERSION==='v8'){
       const reply=await handleSmsCommand('JOB SEARCH VP of Operations','repair-v8-vp-search',browserContext);
       console.log('[sms-pilot] '+reply);
@@ -120,5 +137,6 @@ async function shutdown(signal) {
 
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 process.on('SIGINT', () => void shutdown('SIGINT'));
+
 
 

@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import {setPostingArchive} from './google-answers.js';
 import {driveOAuth} from './drive-oauth.js';
+import {capturePostingPdf} from './posting-pdf.js';
 
 const FOLDER='1NtyYD40oT4mU7CBbd0tJZ260Jm6_GXS9';
 const SCOPE='https://www.googleapis.com/auth/drive.file';
@@ -20,7 +21,7 @@ export async function archivePosting(page,job){
  if(!/^[0-9]{8,12}$/.test(id))throw Error('Invalid archive job ID');
  try{
   const token=await accessToken();
-  const pdf=await page.pdf({format:'A4',printBackground:true,preferCSSPageSize:false,timeout:20000});
+  const pdf=await capturePostingPdf(page,job);
   if(pdf.length<2000)throw Error('PDF unexpectedly small');
   const title=[job.company||'Employer',job.title||'Job',id].join(' - ').replace(/[^a-zA-Z0-9 ._-]/g,'').slice(0,160)+'.pdf';
   const boundary='lilly'+crypto.randomBytes(12).toString('hex');
@@ -43,4 +44,5 @@ export async function archivePosting(page,job){
   return {ok:false,reason};
  }
 }
+
 
