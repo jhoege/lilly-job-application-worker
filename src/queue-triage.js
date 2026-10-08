@@ -96,6 +96,19 @@ async function saveDraftIfSupported(page){
  }catch(e){return {saved:false,reason:'Save attempt failed: '+String(e.message).slice(0,90)}}
  return {saved:false,reason:'No supported LinkedIn Save draft control'};
 }
+async function saveJobForLater(page,source){
+ if(source==='LinkedIn saved')return {saved:true,reason:'Already on LinkedIn saved-jobs list'};
+ try{
+  const saved=page.locator('button[aria-label*="Saved" i], .jobs-save-button[aria-pressed="true"]').first();
+  if(await saved.isVisible({timeout:500}).catch(()=>false))return {saved:true,reason:'Job already saved'};
+  const save=page.locator('button.jobs-save-button, button[aria-label^="Save "],button[aria-label="Save"]').first();
+  if(await save.isVisible({timeout:900}).catch(()=>false)){
+   await save.click({timeout:3000});
+   return {saved:true,reason:'Clicked LinkedIn Save job'};
+  }
+ }catch(e){return {saved:false,reason:'Save job failed: '+String(e.message).slice(0,80)}}
+ return {saved:false,reason:'No LinkedIn Save job control detected'};
+}
 const displayStatus={
  needs_answers:'Needs answers',ready_for_review:'Ready for review',
  needs_manual_review:'Needs review',submission_blocked:'Submission blocked',
@@ -263,11 +276,13 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
      let added=0;
      if(unknown.length){setStage('saving_questions_to_sheet');added=(await appendUnknownQuestions(unknown.map(question=>({jobId:job.id,platform:'LinkedIn',question,url:job.url,employer:job.company})))).added;}
      let draft={saved:false,reason:'No draft save attempted'};
+     let jobSaved={saved:false,reason:'Not checked'};
      if(!['submitted_verified','submission_unverified'].includes(status)){
       setStage('saving_unfinished_application');
       draft=await saveDraftIfSupported(page);
+      jobSaved=await saveJobForLater(page,job.source);
      }
-     results.push({jobId:job.id,status,stepsCompleted:steps,unknownQuestions:unknown.length,logged:added,diagnostic,draftSaved:draft.saved,draftNote:draft.reason,submitted:status==='submitted_verified'});
+     results.push({jobId:job.id,status,stepsCompleted:steps,unknownQuestions:unknown.length,logged:added,diagnostic,draftSaved:draft.saved,jobSaved:jobSaved.saved,draftNote:draft.reason,saveNote:jobSaved.reason,submitted:status==='submitted_verified'});
      // This triage never presses Submit. Closing this isolated page abandons the form.
     }catch(e){results.push({jobId:job.id,status:cancelRequested?'cancelled':timedOut?'job_timeout':'technical_failure',stage,reason:String(e.message).slice(0,120)})}
     finally{
@@ -278,8 +293,8 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
      const outcome=last?.jobId===job.id?last:{jobId:job.id,status:'unknown'};
      if(!submittedIds.has(job.id)&&!['skipped_already_logged','submitted_verified','already_applied_logged'].includes(outcome.status)){
       const label=displayStatus[outcome.status]||'Needs review';
-      const display=outcome.draftSaved&&['needs_answers','needs_manual_review','ready_for_review'].includes(outcome.status)?'Saved - '+label:label;
-      const reason=[outcome.diagnostic?.reason||outcome.reason||outcome.diagnostic||'',outcome.draftNote||''].filter(x=>typeof x==='string'&&x).join('; ').slice(0,450);
+      const display=(outcome.draftSaved||outcome.jobSaved)&&['needs_answers','needs_manual_review','ready_for_review'].includes(outcome.status)?'Saved - '+label:label;
+      const reason=[outcome.diagnostic?.reason||outcome.reason||outcome.diagnostic||'',outcome.draftNote||'',outcome.saveNote||''].filter(x=>typeof x==='string'&&x).join('; ').slice(0,450);
       try{await upsertApplicationStatus(job,display,reason,{source:job.source})}
       catch(e){outcome.ledgerError=String(e.message).slice(0,120);console.error('[application-ledger] job='+job.id+' '+outcome.ledgerError)}
      }
