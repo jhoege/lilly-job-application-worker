@@ -43,6 +43,11 @@ test('uncertain submission is never labeled verified',()=>{
  assert.equal(verifiedSubmission('Submitted verified'),true);
  assert.equal(verifiedSubmission('not applied'),false);
 });
+test('worker Docker image includes shared runtime parser',()=>{
+ const docker=fs.readFileSync('Dockerfile','utf8');
+ assert.match(docker,/COPY sms-gateway\/src\/commands\.js \.\/sms-gateway\/src\/commands\.js/);
+ assert.ok(fs.existsSync('sms-gateway/src/commands.js'));
+});
 test('gateway forwards MessageSid, routes natural language before unrelated keywords, and preserves answer text',async()=>{
  const source=fs.readFileSync('sms-gateway/src/server.js','utf8');
  const route=source.slice(source.indexOf('async function routeMessage'),source.indexOf('// Authenticated readiness check'));

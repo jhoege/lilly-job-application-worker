@@ -7,6 +7,7 @@ RUN npm install --omit=dev
 
 COPY src ./src
 COPY data ./data
+COPY sms-gateway/src/commands.js ./sms-gateway/src/commands.js
 
 ENV NODE_ENV=production
 ENV BROWSER_PROFILE_PATH=/data/browser-profile
@@ -14,3 +15,4 @@ ENV BROWSER_PROFILE_PATH=/data/browser-profile
 EXPOSE 3000
 
 CMD ["npm", "start"]
+
