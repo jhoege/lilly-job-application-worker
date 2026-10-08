@@ -1,4 +1,4 @@
-const DESCRIPTION='.jobs-description__content,.jobs-description-content__text,.jobs-description__text,.description__text';
+const DESCRIPTION='[id^="JobDetails_AboutTheJob_"],.jobs-description__content,.jobs-description-content__text,.jobs-description__text,.description__text';
 const escape=text=>String(text||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 export function postingHtml({job,description,header,capturedAt}){
@@ -19,11 +19,14 @@ export async function capturePostingPdf(page,job){
   console.log('[posting-capture-diagnostic] '+JSON.stringify(diagnostic));
   throw Error('Full job description unavailable; PDF capture blocked');
  }
- const expand=page.locator('.jobs-description button,.jobs-description__container button,.description__text button').filter({hasText:/show more|see more/i}).first();
+ const expand=page.locator('[id^="JobDetails_AboutTheJob_"] button,.jobs-description button,.jobs-description__container button,.description__text button').filter({hasText:/show more|see more/i}).first();
  if(await expand.isVisible().catch(()=>false))await expand.click({timeout:3000});
  // textContent includes collapsed original text; printing LinkedIn's scroll containers clips it.
  const description=(await descriptionNode.textContent({timeout:5000})||'').trim();
- const header=await page.locator('.job-details-jobs-unified-top-card,.jobs-unified-top-card,.top-card-layout').first().innerText({timeout:3000}).catch(()=>[job.company,job.title].join('\n'));
+ const header=await page.locator('.job-details-jobs-unified-top-card,.jobs-unified-top-card,.top-card-layout').first().innerText({timeout:1000}).catch(async()=>{
+  const text=await page.locator('main').first().innerText({timeout:3000});
+  return text.split(/Use AI to assess|People you can reach|About the job/i)[0].slice(0,2000);
+ });
  const html=postingHtml({job,description,header,capturedAt:new Date().toISOString()});
  const printPage=await page.context().newPage();
  try{
