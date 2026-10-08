@@ -1,8 +1,9 @@
 import express from 'express';
+import crypto from 'node:crypto';
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import { mountAuthBrowser } from './auth-browser.js';
-import { checkAnswerConnector } from './google-answers.js';
+import { checkAnswerConnector, smsJobSummary, smsRecordAnswer } from './google-answers.js';
 import { startQuestionAlerts } from './question-alerts.js';
 import { startAutoTriage } from './auto-triage.js';
 import { startOneTimeCalendarTest } from './calendar-test-once.js';
@@ -16,6 +17,18 @@ let browserContext = null;
 let browserReady = false;
 let browserError = null;
 
+app.post('/internal/sms-command', express.json({limit:'2kb'}), async(req,res)=>{
+ const secret=process.env.JOB_ALERT_SHARED_SECRET||'';
+ const supplied=String(req.get('authorization')||'').replace(/^Bearer /i,'');
+ const a=Buffer.from(secret),b=Buffer.from(supplied);
+ if(!secret||a.length!==b.length||!crypto.timingSafeEqual(a,b))return res.sendStatus(403);
+ const message=String(req.body?.message||'').trim().slice(0,700);
+ try{
+  const match=message.match(/^ANSWER\\s+(Q[A-Za-z0-9-]+)\\s+([\\s\\S]+)$/i);
+  const reply=match?await smsRecordAnswer(match[1],match[2].trim()):await smsJobSummary(message);
+  return res.json({reply});
+ }catch(e){console.error('[sms-command]',String(e.message).slice(0,100));return res.status(503).json({reply:'Lilly Jobs is temporarily unable to access the application tracker.'})}
+});
 app.get('/health', (_req, res) => {
   res.status(200).json({
     status: 'ok',
