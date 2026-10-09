@@ -1,17 +1,16 @@
-import crypto from 'node:crypto';
+import {createCalendarTickets} from './calendar-tickets.js';
 import {createDriveOAuth} from './drive-oauth.js';
 import {serviceCalendarToken} from './google-answers.js';
 export const CALENDAR_SCOPE='https://www.googleapis.com/auth/calendar.readonly';
 export const calendarOAuth=createDriveOAuth({scope:CALENDAR_SCOPE,identity:'calendar'});
 const CONNECT='https://lilly-job-worker-app-production.up.railway.app/auth-browser';
-const tickets=new Map();
+const tickets=createCalendarTickets();
 export function calendarConnectLink(){
- for(const [id,until]of tickets)if(until<Date.now())tickets.delete(id);
- const ticket=crypto.randomBytes(32).toString('hex');tickets.set(ticket,Date.now()+10*60*1000);
+ const ticket=tickets.create();
  return 'https://lilly-job-worker-app-production.up.railway.app/integrations/calendar/connect?ticket='+ticket;
 }
 export function mountCalendarConnect(app){
- const valid=ticket=>typeof ticket==='string'&&/^[a-f0-9]{64}$/.test(ticket)&&(tickets.get(ticket)||0)>Date.now();
+ const valid=ticket=>tickets.valid(ticket);
  app.get('/integrations/calendar/connect',(req,res)=>{
   res.set('Cache-Control','no-store');res.set('Referrer-Policy','no-referrer');res.set('Content-Security-Policy',"default-src 'none'; form-action 'self'; frame-ancestors 'none'");
   if(!valid(req.query.ticket))return res.status(410).type('text').send('This connection link expired. Text CALENDAR CONNECT to Lilly for a new link.');
@@ -19,7 +18,6 @@ export function mountCalendarConnect(app){
  });
  app.post('/integrations/calendar/connect',async(req,res)=>{
   if(!valid(req.body?.ticket))return res.status(410).type('text').send('Connection link expired. Text CALENDAR CONNECT for a new link.');
-  tickets.delete(req.body.ticket);
   const json=res.json.bind(res);res.json=body=>body.authorizationUrl?res.redirect(303,body.authorizationUrl):json(body);
   calendarOAuth.start(req,res);
  });

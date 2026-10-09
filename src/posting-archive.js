@@ -23,8 +23,21 @@ export async function archivePosting(page,job){
   const token=await accessToken();
   const existingId=String(job.archiveUrl||'').match(/drive\.google\.com\/file\/d\/([A-Za-z0-9_-]+)/)?.[1];
   if(existingId&&job.archiveStatus==='Captured'){
-   const existing=await fetch('https://www.googleapis.com/drive/v3/files/'+existingId+'?fields=id,mimeType,size,parents,appProperties,trashed,webViewLink',{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(8000)});
-   if(existing.ok){const file=await existing.json();if(!file.trashed&&file.mimeType==='application/pdf'&&Number(file.size)>2000&&file.parents?.includes(FOLDER)&&file.appProperties?.lillyPostingSchema==='fulltext-v1'&&file.appProperties?.lillyJobId===id)return {ok:true,url:file.webViewLink||job.archiveUrl,reused:true};}
+   const existing=await fetch('https://www.googleapis.com/drive/v3/files/'+existingId+'?fields=id,mimeType,size,parents,appProperties,trashed,webViewLink,createdTime',{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(8000)});
+   if(existing.ok){const file=await existing.json();if(!file.trashed&&file.mimeType==='application/pdf'&&Number(file.size)>2000&&file.parents?.includes(FOLDER)&&(!file.appProperties?.lillyJobId||file.appProperties.lillyJobId===id))return {ok:true,url:file.webViewLink||job.archiveUrl,reused:true};}
+  }
+  // Recover a verified full-text capture even when a retry lost the tracker URL.
+  const query="'"+FOLDER+"' in parents and trashed = false and mimeType = 'application/pdf' and appProperties has { key='lillyPostingSchema' and value='fulltext-v1' } and appProperties has { key='lillyJobId' and value='"+id+"' }";
+  const lookupUrl=new URL('https://www.googleapis.com/drive/v3/files');
+  lookupUrl.searchParams.set('q',query);lookupUrl.searchParams.set('fields','files(id,mimeType,size,parents,appProperties,trashed,webViewLink,createdTime)');
+  lookupUrl.searchParams.set('orderBy','createdTime desc');lookupUrl.searchParams.set('pageSize','100');
+  const lookup=await fetch(lookupUrl,{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(8000)});
+  if(!lookup.ok)throw Error('Existing archive lookup HTTP '+lookup.status);
+  const recovered=(await lookup.json()).files?.find(file=>Number(file.size)>2000&&file.parents?.includes(FOLDER)&&file.appProperties?.lillyPostingSchema==='fulltext-v1'&&file.appProperties?.lillyJobId===id);
+  if(recovered){
+   const url=recovered.webViewLink||'https://drive.google.com/file/d/'+recovered.id+'/view';
+   await setPostingArchive(id,{url,status:'Captured',archivedAt:recovered.createdTime||job.archivedAt||new Date().toISOString()});
+   return {ok:true,url,reused:true};
   }
   const pdf=await capturePostingPdf(page,job);
   if(pdf.length<2000)throw Error('PDF unexpectedly small');

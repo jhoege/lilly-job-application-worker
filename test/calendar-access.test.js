@@ -27,7 +27,7 @@ test('SMS calendar questions include meetings and addresses and use Chicago date
  const keyword=calendarQuery('meeting with WaterTech',now);assert.equal(keyword.q,'WaterTech');assert.equal(keyword.timeMax,'2026-10-22T05:00:00.000Z');
 });
 
-test('calendar connection ticket survives link previews, is single use, and begins cookie-bound Google consent',async t=>{
+test('calendar connection ticket survives link previews, permits restarting consent during its lifetime, and begins cookie-bound Google consent',async t=>{
  const saved={...process.env};Object.assign(process.env,{GOOGLE_DRIVE_OAUTH_CLIENT_ID:'client',GOOGLE_DRIVE_OAUTH_CLIENT_SECRET:'secret',BROWSER_ACCESS_KEY:'x'.repeat(64)});
  t.after(()=>{for(const key of ['GOOGLE_DRIVE_OAUTH_CLIENT_ID','GOOGLE_DRIVE_OAUTH_CLIENT_SECRET','BROWSER_ACCESS_KEY'])if(saved[key]===undefined)delete process.env[key];else process.env[key]=saved[key];});
  const routes={};mountCalendarConnect({get:(url,fn)=>{routes.get=fn;},post:(url,fn)=>{routes.post=fn;}});
@@ -35,5 +35,6 @@ test('calendar connection ticket survives link previews, is single use, and begi
  for(let i=0;i<2;i++){const r=response();routes.get({query:{ticket}},r);assert.match(r.body,/Connect Google Calendar/);}
  const r=response();await routes.post({body:{ticket}},r);
  assert.equal(r.statusCode,303);assert.equal(new URL(r.location).searchParams.get('scope'),CALENDAR_SCOPE);assert.equal(r.cookies[0].n,'lilly_calendar_oauth');assert.equal(r.cookies[0].o.httpOnly,true);
- const expired=response();routes.get({query:{ticket}},expired);assert.equal(expired.statusCode,410);
+ const reopened=response();routes.get({query:{ticket}},reopened);assert.match(reopened.body,/Connect Google Calendar/);
+ const retry=response();await routes.post({body:{ticket}},retry);assert.equal(retry.statusCode,303);
 });

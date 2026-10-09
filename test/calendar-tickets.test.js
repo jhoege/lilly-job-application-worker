@@ -1,0 +1,22 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {createCalendarTickets} from '../src/calendar-tickets.js';
+test('calendar SMS links survive process replacement, previews, and expire after ten minutes',t=>{
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'calendar-tickets-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+ let clock=1000000;
+ const options={directory,now:()=>clock};
+ const issued=createCalendarTickets(options).create();
+ const restarted=createCalendarTickets(options);
+ clock+=10000;
+ assert.equal(restarted.valid(issued),true);
+ assert.equal(restarted.valid(issued),true);
+ assert.equal(restarted.consume(issued),true);
+ assert.equal(restarted.consume(issued),false);
+ assert.equal(restarted.valid('../invalid'),false);
+ const expires=restarted.create();clock+=600001;
+ assert.equal(createCalendarTickets(options).valid(expires),false);
+ assert.equal(restarted.consume(expires),false);
+});
