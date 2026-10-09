@@ -222,6 +222,7 @@ app.post('/internal/job-question-alert', express.json({limit:'4kb'}), async(req,
  if(!secret||!provided||provided.length!==secret.length||
     !twilioAuthToken||!process.env.TWILIO_ACCOUNT_SID||!process.env.TWILIO_FROM_PHONE||
     !requireSafeEqual(provided,secret))return res.sendStatus(403);
+ if(process.env.JOB_QUESTION_ALERTS_ENABLED!=='true')return res.json({sent:false,suppressed:true,reason:'question_alerts_disabled'});
  const count=Number(req.body?.count);
  if(!Number.isInteger(count)||count<1||count>999)return res.sendStatus(400);
  try{

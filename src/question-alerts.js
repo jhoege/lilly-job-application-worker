@@ -5,11 +5,12 @@ const stateFile=process.env.JOB_ALERT_STATE_FILE||'/data/hourly-question-alert.j
 let busy=false;
 let lastAttemptHour=null;
 export function startQuestionAlerts(){
+ if(process.env.JOB_QUESTION_ALERTS_ENABLED!=='true'){console.log('[question-alerts] disabled by notification policy');return}
  const endpoint=process.env.JOB_SMS_GATEWAY_URL;
  const secret=process.env.JOB_ALERT_SHARED_SECRET;
  if(!endpoint||!secret){console.log('[question-alerts] disabled: gateway URL or shared secret missing');return}
  const run=async()=>{
-  if(busy)return;
+  if(busy||process.env.JOB_QUESTION_ALERTS_ENABLED!=='true')return;
   const now=new Date();
   const hour=now.toISOString().slice(0,13);
   let prior={};
