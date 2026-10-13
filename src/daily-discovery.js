@@ -37,7 +37,7 @@ export async function discoverDailyJobs(context){
     if(write.updated){known.add(id);queued++;found++;}
    }
    results.push({role,found:(search.results||[]).length,queued,issues:search.issues||[]});
-   console.log('[daily-discovery] role='+role+' found='+(search.results||[]).length+' queued='+queued);
+   console.log('[daily-discovery] role='+role+' found='+(search.results||[]).length+' queued='+queued+' issues='+JSON.stringify((search.issues||[]).slice(0,4)));
   }catch(e){
    const message=String(e.message||e).slice(0,130);
    issues.push(role+': '+message);
