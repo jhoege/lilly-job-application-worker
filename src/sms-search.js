@@ -27,22 +27,47 @@ export async function searchJobs(context,command){
   const page=await context.newPage();
   try{
    await page.goto(query.url,{waitUntil:'domcontentloaded',timeout:20000});
-   await page.locator('a[href*="/jobs/view/"],a[href*="currentJobId="]').first().waitFor({timeout:8000}).catch(()=>{});
+   await page.locator('a[href*="/jobs/view/"],a[href*="currentJobId="],li[data-occludable-job-id],[data-job-id],[data-entity-urn*="jobPosting"]').first().waitFor({timeout:10000}).catch(()=>{});
+   for(let scroll=0;scroll<3;scroll++){
+    await page.evaluate(()=>{const list=document.querySelector('.jobs-search-results-list,.scaffold-layout__list,.jobs-search-results__list');if(list)list.scrollTop=list.scrollHeight;else window.scrollTo(0,document.body.scrollHeight)}).catch(()=>{});
+    await page.waitForTimeout(700);
+   }
    if(/\/login|\/checkpoint|\/authwall/.test(page.url())||await page.locator('input#username,input[name="session_key"]').count()) {issues.push('LinkedIn sign-in or verification required');continue;}
    const cards=await page.evaluate(()=>{
     const jobs=new Map();
-    for(const a of document.querySelectorAll('a[href*="/jobs/view/"],a[href*="currentJobId="]')){
-     const href=a.getAttribute('href')||'',id=href.match(/\/jobs\/view\/(\d{8,12})/)?.[1]||href.match(/[?&]currentJobId=(\d{8,12})/)?.[1];
+    const nodes=[...document.querySelectorAll(
+     'li[data-occludable-job-id],[data-job-id],[data-entity-urn*="jobPosting"],.job-card-container,.jobs-search-results__list-item,a[href*="/jobs/view/"],a[href*="currentJobId="]'
+    )];
+    for(const node of nodes){
+     const card=node.closest('li,.job-card-container,.base-card,.jobs-search-results__list-item')||node;
+     const anchor=card.querySelector('a[href*="/jobs/view/"],a[href*="currentJobId="]')||
+      (node.matches('a')?node:null);
+     const href=anchor?.getAttribute('href')||'';
+     const urn=card.getAttribute('data-entity-urn')||node.getAttribute('data-entity-urn')||'';
+     const id=href.match(/\/jobs\/view\/(\d{8,12})/)?.[1]||
+      href.match(/[?&]currentJobId=(\d{8,12})/)?.[1]||
+      String(card.getAttribute('data-occludable-job-id')||card.getAttribute('data-job-id')||node.getAttribute('data-job-id')||'').match(/\d{8,12}/)?.[0]||
+      urn.match(/jobPosting:(\d{8,12})/)?.[1];
      if(!id)continue;
-     const card=a.closest('li,.job-card-container,.base-card')||a.parentElement;
-     const title=(a.innerText||a.getAttribute('aria-label')||'').replace(/\s+/g,' ').trim();
+     const clean=s=>String(s||'').replace(/\s+/g,' ').trim();
+     const title=clean(card.querySelector('.job-card-list__title,.job-card-container__link,.artdeco-entity-lockup__title,.base-search-card__title')?.textContent||
+      anchor?.innerText||anchor?.getAttribute('aria-label')||'');
      if(!title)continue;
-     const company=(card?.querySelector('.artdeco-entity-lockup__subtitle,.job-card-container__primary-description,.base-search-card__subtitle')?.textContent||'').trim();
-     const location=(card?.querySelector('.artdeco-entity-lockup__caption,.job-card-container__metadata-wrapper,.job-search-card__location')?.textContent||'').trim();
-     if(!jobs.has(id))jobs.set(id,{id,title,company,location,salaryText:card?.innerText||''});
+     const company=clean(card.querySelector('.artdeco-entity-lockup__subtitle,.job-card-container__primary-description,.base-search-card__subtitle')?.textContent||'');
+     const location=clean(card.querySelector('.artdeco-entity-lockup__caption,.job-card-container__metadata-wrapper,.job-search-card__location,.job-card-container__metadata-item')?.textContent||'');
+     if(!jobs.has(id))jobs.set(id,{id,title:title.slice(0,160),company:company.slice(0,100),location:location.slice(0,150),salaryText:clean(card.innerText).slice(0,1500)});
     }
-    return [...jobs.values()].slice(0,10);
+    return [...jobs.values()].slice(0,12);
    });
+   if(!cards.length){
+    const diagnostic=await page.evaluate(()=>({
+     url:location.href.slice(0,150),title:document.title.slice(0,110),
+     links:document.querySelectorAll('a[href*="/jobs/view/"],a[href*="currentJobId="]').length,
+     cards:document.querySelectorAll('[data-job-id],[data-occludable-job-id],.job-card-container').length,
+     excerpt:(document.querySelector('main')?.innerText||document.body.innerText||'').replace(/\s+/g,' ').slice(0,180)
+    })).catch(()=>({error:'page unavailable'}));
+    console.log('[job-search-diagnostic] '+JSON.stringify({role:command.role,remote:query.remote,...diagnostic}));
+   }
    for(const job of cards){
     if(seen.has(job.id))continue;seen.add(job.id);
     job.remoteSearch=query.remote;job.url='https://www.linkedin.com/jobs/view/'+job.id+'/';
