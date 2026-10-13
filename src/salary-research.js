@@ -1,4 +1,5 @@
-import {annualSalaryRange,excludedEmployer} from './job-policy.js';
+import {annualSalaryDetails,excludedEmployer} from './job-policy.js';
+import {readPostingSalaryText} from './posting-salary.js';
 const normalize=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 export function comparableTitle(a,b){
  const rank=s=>/\bvp\b|vice president/.test(s)?'vp':/\bdirector\b/.test(s)?'director':/general manager/.test(s)?'gm':/\bhead\b/.test(s)?'head':'';
@@ -27,7 +28,10 @@ export async function researchComparableSalary(context,job){
     await page.locator('[id^="JobDetails_AboutTheJob_"],.jobs-description__content').first().waitFor({timeout:5000}).catch(()=>{});
     const text=await page.locator('main').innerText({timeout:3000});
     if(/no longer accepting applications/.test(text)||excludedEmployer(text.slice(0,300)))continue;
-    const range=annualSalaryRange(text);if(range)samples.push({title:candidate.title,url:postingUrl,range,locationBasis:job.location||'United States; comparable leadership title'});
+    const scoped=await readPostingSalaryText(page,{id:candidate.id});
+    const description=annualSalaryDetails(scoped.description),header=annualSalaryDetails(scoped.header);
+    if(description.status==='unresolved'||header.status==='unresolved'||description.range&&header.range&&(description.range.min!==header.range.min||description.range.max!==header.range.max))continue;
+    const range=description.range||header.range;if(range)samples.push({title:candidate.title,url:postingUrl,range,locationBasis:job.location||'United States; comparable leadership title'});
     if(samples.length>=3)break;
    }catch{}
   }

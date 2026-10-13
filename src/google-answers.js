@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import {validateSalaryTarget,SALARY_VALIDATION_VERSION} from './salary-validation.js';
 import {verifiedSubmission,uncertainSubmission,excludedApplication} from './job-policy.js';
 
 const SHEET_ID='1g4eUIwU1-zyZWuNyMCxradZLhtDnjBcTS34DkxUcItg';
@@ -137,15 +138,18 @@ export async function logVerifiedLinkedInApplication(job){
 
 const SHEETS_BASE='https://sheets.googleapis.com/v4/spreadsheets/'+SHEET_ID+'/values/';
 async function ledgerRows(access){
- const range=encodeURIComponent("'Applications'!A1:Q2000");
+ const range=encodeURIComponent("'Applications'!A1:W2000");
  const response=await fetch(SHEETS_BASE+range,{headers:{Authorization:'Bearer '+access},signal:AbortSignal.timeout(12000)});
  if(!response.ok)throw Error('Application ledger read failed HTTP '+response.status);
  return (await response.json()).values||[];
 }
+function parseSalaryBaseline(row){
+ try{return {...JSON.parse(row[18]||'null'),basis:row[17]||'',validationVersion:row[20]||'',researchedAt:row[19]||''};}catch{return null;}
+}
 export async function readApplicationLedger(){
  const access=await token();
  const rows=await ledgerRows(access);
- return rows.slice(1).filter(r=>r[0]).map(r=>({id:String(r[0]),company:r[2]||'',title:r[3]||'',status:r[4]||'',salaryRequest:r[5]||null,url:r[8]||'',reason:r[9]||'',source:r[10]||'',resumeVersion:r[15]||'',archiveUrl:r[11]||'',archiveStatus:r[12]||'',archivedAt:r[13]||''}));
+ return rows.slice(1).filter(r=>r[0]).map(r=>({id:String(r[0]),company:r[2]||'',title:r[3]||'',status:r[4]||'',salaryRequest:r[5]||null,url:r[8]||'',reason:r[9]||'',source:r[10]||'',resumeVersion:r[15]||'',archiveUrl:r[11]||'',archiveStatus:r[12]||'',archivedAt:r[13]||'',salaryBaseline:parseSalaryBaseline(r)}));
 }
 export async function upsertApplicationStatus(job,status,reason='',extra={}){
  const id=String(job?.id||'').trim();
@@ -219,12 +223,26 @@ export async function setPostingArchive(jobId,{url,status,archivedAt}){
 
 
 export async function setSalaryBaseline(job,baseline,amount){
- const access=await token(),rows=await ledgerRows(access),index=rows.findIndex((r,i)=>i>0&&String(r[0])===job.id);
+ validateSalaryTarget(baseline,amount);
+ const access=await token(),rows=await ledgerRows(access),index=rows.findIndex((r,i)=>i>0&&String(r[0])===String(job.id));
  if(index<1)throw Error('Salary target application row not found');
- if(verifiedSubmission(rows[index][4])||excludedApplication(rows[index][4]))return;
- const headers={Authorization:'Bearer '+access,'Content-Type':'application/json'};
- for(const [range,values] of [["'Applications'!F"+(index+1),[[String(amount)]]],["'Applications'!R"+(index+1)+':T'+(index+1),[[baseline.basis||'posted_range',JSON.stringify({min:baseline.min,max:baseline.max,samples:baseline.samples||[{url:job.url}]}),baseline.researchedAt||new Date().toISOString()]]]]){
-  const r=await fetch(SHEETS_BASE+encodeURIComponent(range)+'?valueInputOption=RAW',{method:'PUT',headers,body:JSON.stringify({values}),signal:AbortSignal.timeout(12000)});
-  if(!r.ok)throw Error('Salary basis write failed HTTP '+r.status);
- }
+ if(verifiedSubmission(rows[index][4])||excludedApplication(rows[index][4])||uncertainSubmission(rows[index][4]))throw Error('Salary validation: protected application history');
+ const old=parseSalaryBaseline(rows[index]);
+ if(old?.validationVersion===SALARY_VALIDATION_VERSION&&old.basis==='posted_range'&&
+  (Number(old.min)!==Number(baseline.min)||Number(old.max)!==Number(baseline.max)||baseline.basis!=='posted_range'))throw Error('Salary validation: refusing to overwrite validated posting salary');
+ const data=[{range:"'Applications'!F"+(index+1),values:[[String(amount)]]},
+  {range:"'Applications'!R"+(index+1)+':U'+(index+1),values:[[baseline.basis,JSON.stringify({min:baseline.min,max:baseline.max,samples:baseline.samples||[{url:job.url}],sourceNotes:baseline.sourceNotes||''}),baseline.researchedAt||new Date().toISOString(),SALARY_VALIDATION_VERSION]]}];
+ const r=await fetch(SHEETS_BASE.slice(0,-1)+':batchUpdate',{method:'POST',headers:{Authorization:'Bearer '+access,'Content-Type':'application/json'},body:JSON.stringify({valueInputOption:'RAW',data}),signal:AbortSignal.timeout(12000)});
+ if(!r.ok)throw Error('Salary basis write failed HTTP '+r.status);
+}
+export async function recordSalaryAnswerEvidence(job,evidence){
+ const access=await token(),rows=await ledgerRows(access),index=rows.findIndex((r,i)=>i>0&&String(r[0])===String(job.id));
+ if(index<1)throw Error('Salary evidence application row not found');
+ const current=parseSalaryBaseline(rows[index]);
+ if(current?.validationVersion!==SALARY_VALIDATION_VERSION)throw Error('Salary validation: baseline not validated');
+ validateSalaryTarget(current,evidence.target);
+ if(Number(rows[index][5])!==evidence.target)throw Error('Salary validation: evidence differs from tracker target');
+ const range=encodeURIComponent("'Applications'!V"+(index+1)+':W'+(index+1));
+ const r=await fetch(SHEETS_BASE+range+'?valueInputOption=RAW',{method:'PUT',headers:{Authorization:'Bearer '+access,'Content-Type':'application/json'},body:JSON.stringify({values:[[JSON.stringify(evidence),evidence.verifiedAt]]}),signal:AbortSignal.timeout(12000)});
+ if(!r.ok)throw Error('Salary evidence write failed HTTP '+r.status);
 }

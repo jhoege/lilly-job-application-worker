@@ -1,9 +1,11 @@
 import {getQueue,salaryRequest} from './application-support.js';
-import {readApprovedAnswers,appendUnknownQuestions,readSubmittedJobIds,readApplicationLedger,logVerifiedLinkedInApplication,upsertApplicationStatus,setSalaryBaseline} from './google-answers.js';
-import {excludedEmployer,excludedApplication,annualSalaryRange} from './job-policy.js';
+import {readApprovedAnswers,appendUnknownQuestions,readSubmittedJobIds,readApplicationLedger,logVerifiedLinkedInApplication,upsertApplicationStatus,setSalaryBaseline,readSearchLedger,recordSalaryAnswerEvidence} from './google-answers.js';
+import {excludedEmployer,excludedApplication} from './job-policy.js';
 import {archivePosting} from './posting-archive.js';
 import {researchComparableSalary,salaryChoice} from './salary-research.js';
 import {exportResumePacket,uploadResumePacket,verifyResumeSelection} from './resume-packet.js';
+import {readPostingSalaryText} from './posting-salary.js';
+import {authoritativeSalary,resolveSalaryBaseline,validateSalaryTarget,desiredSalaryQuestion,salaryAnswerMatches,validateSalaryReview,SALARY_VALIDATION_VERSION} from './salary-validation.js';
 let running=false;
 let cancelRequested=false;
 let activePage=null;
@@ -25,7 +27,7 @@ function lookupAnswer(label,approved,advertisedSalary){
  const n=normalize(label).replace(/ required$/,'');
  let key=aliases.get(n)||n;
  if(/(furnish|provide|show).*(documentation|documents|proof)/.test(n))return approved.find(a=>normalize(a.question)===n)?.answer;
- if(/(desired|expected|salary expectation|compensation expectation)/.test(n)&&/(salary|compensation|pay)/.test(n)){
+ if(desiredSalaryQuestion(label)){
   return advertisedSalary==null?undefined:String(advertisedSalary);
  }
  const exact=approved.find(a=>normalize(a.question).replace(/ required$/,'')===n);
@@ -199,14 +201,15 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       submittedIds.add(job.id);
       results.push({jobId:job.id,status:'already_applied_logged',logged:logged.added});continue;
      }
-     let advertisedSalary=null;
+     let advertisedSalary=null;let salaryBaseline=null;const salaryObserved=new Map();
      setStage('archiving_job_posting');
      const archive=await archivePosting(page,job);
      if(!archive.ok){
       results.push({jobId:job.id,status:'needs_manual_review',reason:'Posting PDF archive failed: '+archive.reason});
       continue;
      }
-     const postingText=await page.locator('[id^="JobDetails_AboutTheJob_"],.jobs-description__content').first().innerText().catch(()=>'');
+     const scopedPosting=await readPostingSalaryText(page,job);
+     const postingText=scopedPosting.description;
      if(/active top secret|top secret.{0,35}must have clearance to start/i.test(postingText)&&/not currently|^no$/i.test(lookupAnswer('Security clearance held?',approved)||'')){
       results.push({jobId:job.id,status:'excluded_qualification',reason:'Active Top Secret clearance required; approved answer says no current clearance'});continue;
      }
@@ -244,9 +247,14 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       results.push({jobId:job.id,status,jobSaved:jobSaved.saved,saveNote:jobSaved.reason,diagnostic:'No visible Easy Apply control after page loaded'});continue;
      }
      setStage('resolving_salary_baseline');
-     let salaryBaseline=annualSalaryRange(currentJobStatus+'\n'+postingText);
+     salaryBaseline=resolveSalaryBaseline({...scopedPosting,authoritative:authoritativeSalary(await readSearchLedger(),job),recorded:ledger.find(x=>x.id===job.id)?.salaryBaseline});
      if(!salaryBaseline)salaryBaseline=await researchComparableSalary(context,job);
+     if(salaryBaseline.basis!=='posted_range'&&!salaryBaseline.validationVersion){
+      // Research is permitted only after the exact posting's salary is proven absent.
+      salaryBaseline.validationVersion=SALARY_VALIDATION_VERSION;
+     }
      advertisedSalary=salaryRequest(salaryBaseline).amount;
+     validateSalaryTarget(salaryBaseline,advertisedSalary);
      job.salaryRequest=advertisedSalary;
      await setSalaryBaseline(job,salaryBaseline,advertisedSalary);
      const resumeVersion=ledger.find(x=>x.id===job.id)?.resumeVersion||job.resumeVersion||'';
@@ -298,7 +306,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       for(const f of fields){
        // Trust pre-filled values from the user's prior applications; never overwrite them.
        if(packetSelected&&f.type==='file')continue;
-       const salaryField=/(desired|expected|salary expectation|compensation expectation)/i.test(f.label)&&/(salary|compensation|pay)/i.test(f.label);
+       const salaryField=desiredSalaryQuestion(f.label);
        if((!f.required||f.filled)&&!salaryField)continue;
        const answer=lookupAnswer(f.label,approved,advertisedSalary);
        // Only fill clearly labeled text-like fields. No guessed dropdown, radio, checkbox, file or identity answers.
@@ -336,6 +344,11 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
           if(!choice)throw Error('No matching approved select choice');
           await input.selectOption({value:choice.value},{timeout:2500});
          }else throw Error('Unsupported field type');
+         if(salaryField){
+          const value=await input.evaluate(n=>n.tagName==='SELECT'?n.selectedOptions?.[0]?.textContent:n.value);
+          if(!salaryAnswerMatches(value,advertisedSalary))throw Error('Entered salary differs from validated target');
+          salaryObserved.set(f.label,{label:f.label,value});
+         }
         }catch(e){fillErrors.push({label:f.label,type:f.type,error:String(e.message).slice(0,1200),nativeChoice:e.nativeChoice||null,target:await input.evaluate(n=>({tag:n.tagName,type:n.type,label:n.getAttribute('aria-label'),id:n.id}),null,{timeout:800}).catch(()=>null)});missing.push(f)}
        }else {missing.push(f);unknownFields.push(f);}
       }
@@ -370,6 +383,15 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
         });
         if(validation.invalid>0){status='submission_blocked';diagnostic={...diagnostic,reason:'Unresolved invalid required fields',invalidFields:validation.invalid};break}
         if(!await submit.isEnabled()) {status='submission_blocked';diagnostic={...diagnostic,reason:'Submit disabled'};break}
+        try{
+         const freshLedger=(await readApplicationLedger()).find(x=>x.id===job.id);
+         const freshBaseline=resolveSalaryBaseline({...scopedPosting,authoritative:authoritativeSalary(await readSearchLedger(),job),recorded:freshLedger?.salaryBaseline})||salaryBaseline;
+         validateSalaryTarget(freshBaseline,advertisedSalary);
+         if(Number(freshLedger?.salaryRequest)!==advertisedSalary)throw Error('Salary validation: tracker target changed during application');
+         const evidence=validateSalaryReview(await dialog.innerText(),advertisedSalary,[...salaryObserved.values()]);
+         await recordSalaryAnswerEvidence(job,evidence);
+         console.log('[salary-review-verified] '+JSON.stringify({jobId:job.id,...evidence}));
+        }catch(e){status='submission_blocked';diagnostic={...diagnostic,reason:String(e.message)};break;}
         setStage('submitting_completed_application');
         submissionAttempted=true;
         await upsertApplicationStatus(job,'Submission unverified - Verify before retry','Submission action about to be attempted; verification required before any retry');

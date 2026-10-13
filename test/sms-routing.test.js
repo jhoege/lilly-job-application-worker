@@ -69,7 +69,7 @@ test('worker acknowledges real retries, deduplicates inbound requests, persists 
  const context=vm.createContext({fs:fakeFs,path,crypto,parseCommand,process:{env:{JOB_SMS_GATEWAY_URL:'https://gateway.example',JOB_ALERT_SHARED_SECRET:'test'}},console:{error:()=>{},log:()=>{}},URL,AbortSignal,
   setTimeout:fn=>{timers.push(fn);return {unref:()=>{}};},getTriageStatus:()=>({running:false}),smsJobSummary:async s=>'summary '+s,smsRecordAnswer:async(id,a)=>id+': '+a,
   runAutoTriage:async(_c,options)=>{assert.equal(options.force,true);retries++;return {started:true,results:[{jobId:'1234567890',status:'needs_answers'}]};},
-  searchJobs:async()=>{searches++;return {reply:'search results',results:[]};},fetch:async()=>({ok:false,status:502})});
+  readApplicationLedger:async()=>[],searchJobs:async()=>{searches++;return {reply:'search results',results:[]};},fetch:async()=>({ok:false,status:502})});
  const fn=vm.runInContext(source+';handleSmsCommand',context);
  const ack=await fn('JOBS RETRY','SM12345678',{});assert.match(ack,/retry started/);assert.equal(retries,0);
  assert.match(await fn('JOBS RETRY','SM12345678',{}),/queued/);

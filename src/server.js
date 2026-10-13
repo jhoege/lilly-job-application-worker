@@ -1,4 +1,5 @@
 import express from 'express';
+import {SALARY_VALIDATION_VERSION} from './salary-validation.js';
 import crypto from 'node:crypto';
 import { chromium } from 'playwright';
 import fs from 'node:fs';
@@ -55,6 +56,7 @@ app.post('/internal/archive-test',express.json({limit:'1kb'}),async(req,res)=>{
 app.get('/health', (_req, res) => {
   res.status(200).json({
     status: 'ok',
+    salaryValidationVersion: SALARY_VALIDATION_VERSION,
     release: '2026-10-08-drive-oauth-v1',
     service: 'lilly-job-application-worker',
     testMode,

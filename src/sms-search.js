@@ -1,3 +1,5 @@
+import {readPostingSalaryText} from './posting-salary.js';
+import {resolveSalaryBaseline} from './salary-validation.js';
 import {researchComparableSalary} from './salary-research.js';
 import {annualSalaryRange,excludedEmployer,QUALIFICATION_TARGET} from './job-policy.js';
 export function searchUrls(command){
@@ -83,8 +85,11 @@ export async function searchJobs(context,command,{maxCards=10,maxResults=6}={}){
      const easy=details.getByRole('button',{name:/Easy Apply/i}).first();
      job.easyApply=await easy.waitFor({state:'visible',timeout:4000}).then(()=>true).catch(()=>false);
      if(!job.easyApply)continue;
-     job.salaryText=text||job.salaryText;
+     const scoped=await readPostingSalaryText(details,job);
+     const verifiedSalary=resolveSalaryBaseline(scoped);
+     job.salaryText=scoped.description+'\n'+scoped.header;
      check=evaluateSearchCandidate(job,command.role);
+     check.salary=verifiedSalary;
      if(check.eligible&&!check.salary){
       const baseline=await researchComparableSalary(context,job);
       if(baseline.max<QUALIFICATION_TARGET)continue;
