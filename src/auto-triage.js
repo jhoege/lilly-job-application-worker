@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import {readApprovedAnswers,readApplicationLedger,upsertApplicationStatus,recordSearchAttempt} from './google-answers.js';
 import {discoverSavedLinkedInJobs} from './linkedin-saved.js';
+import {discoverDailyJobs} from './daily-discovery.js';
 import path from 'node:path';
 import {getQueue} from './application-support.js';
 import {getTriageStatus,triageQueue} from './queue-triage.js';
@@ -18,6 +19,10 @@ export async function runAutoTriage(context,{force=false,ids=null}={}){
    let state={};try{state=JSON.parse(fs.readFileSync(statePath,'utf8'))}catch{}
    const approved=await readApprovedAnswers();
    const fingerprint=crypto.createHash('sha256').update(JSON.stringify(approved.map(x=>[x.question,x.answer]).sort((a,b)=>a[0].localeCompare(b[0])))).digest('hex');
+   // Search new postings once per day before processing saved and existing jobs.
+   // This closes the gap where SMS searches returned results but did not populate the queue.
+   try{await discoverDailyJobs(context)}
+   catch(e){console.error('[daily-discovery] unable to search '+String(e.message).slice(0,150))}
    const original=getQueue().filter(j=>!j.submitted&&j.status!=='closed_not_accepting_applications');
    let saved={status:'not_checked',jobs:[]};
    try{saved=await discoverSavedLinkedInJobs(context)}
@@ -50,6 +55,7 @@ export async function runAutoTriage(context,{force=false,ids=null}={}){
     const retryHours=['technical_failure','job_timeout','login_required'].includes(entry?.status)?1:24;
     return previous!==fingerprint||version!==engineVersion||Date.now()-last>retryHours*60*60*1000;
    });
+   console.log('[auto-triage] queue='+jobs.length+' eligible='+eligible.length+' known='+ledger.length);
    if(!eligible.length)return {started:true,results:[],reason:'no_eligible_jobs'};
    // Process the full eligible queue in consecutive batches, not just five per hour.
    // Cap at 25 per cycle to avoid overloading LinkedIn and Google Sheets.
