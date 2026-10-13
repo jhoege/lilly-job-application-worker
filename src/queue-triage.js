@@ -79,6 +79,8 @@ async function fieldsOnPage(page){
    const groupText=(group?.innerText||'').split(/\n/).map(s=>s.trim()).filter(Boolean);
    let checkboxQuestion='';
    if(el.type==='checkbox')for(let n=el.parentElement;n&&n!==dialog;n=n.parentElement){
+    // A sibling field's required marker must never label an optional checkbox.
+    if(n.querySelectorAll('input:not([type=hidden]),select,textarea').length>1)break;
     if(n.querySelectorAll('input[type=checkbox]').length>1)break;
     const lines=(n.innerText||'').split(/\n/).map(x=>x.trim()).filter(Boolean);
     const question=lines.find(x=>/[*]\s*$/.test(x)||/^You declare that/i.test(x));
@@ -88,17 +90,18 @@ async function fieldsOnPage(page){
 
    const wrapper=el.closest('.fb-dash-form-element, .jobs-easy-apply-form-element, .artdeco-text-input, .fb-dash-form-element-group');
    const label=normalizeText(
-    (el.type==='radio'||el.type==='checkbox'?checkboxQuestion||fieldset?.querySelector('legend')?.innerText||questionText:null)||
+    (el.type==='radio'?fieldset?.querySelector('legend')?.innerText||questionText:null)||
     el.getAttribute('aria-label')||
     el.labels?.[0]?.innerText||
     (el.getAttribute('aria-labelledby')||'').split(/\s+/).map(id=>document.getElementById(id)?.innerText).filter(Boolean).join(' ')||
+    checkboxQuestion||
     fieldset?.querySelector('legend')?.innerText||
     wrapper?.querySelector('label, .fb-dash-form-element__label')?.innerText||
     el.getAttribute('placeholder')
    );
    const required=el.required||el.getAttribute('aria-required')==='true'||
-    !!wrapper?.querySelector('label .visually-hidden, .fb-dash-form-element__label .visually-hidden')||
-    /[*]\s*$/.test(el.labels?.[0]?.innerText||'')||/[*]\s*$/.test(fieldset?.querySelector('legend')?.innerText||'')||((el.type==='radio'||el.type==='checkbox')&&/[*]/.test(checkboxQuestion||questionText));
+    ((el.type!=='checkbox'&&el.type!=='radio')&&!!wrapper?.querySelector('label .visually-hidden, .fb-dash-form-element__label .visually-hidden'))||
+    /[*]\s*$/.test(el.labels?.[0]?.innerText||'')||/[*]\s*$/.test(fieldset?.querySelector('legend')?.innerText||'')||(el.type==='radio'&&/[*]/.test(questionText))||(el.type==='checkbox'&&/[*]/.test(checkboxQuestion));
    const filled=el.type==='radio'
     ? !![...dialog.querySelectorAll('input[type="radio"]')].find(other=>other.name===el.name&&(other.checked||other.closest('[role=radio]')?.getAttribute('aria-checked')==='true'))
     : el.type==='checkbox' ? el.checked||el.closest('[role=checkbox]')?.getAttribute('aria-checked')==='true'
