@@ -1,9 +1,16 @@
-import test from 'node:test';
+import test,{after} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {calendarQuery,CALENDAR_SCOPE,calendarConnectLink,mountCalendarConnect} from '../src/calendar-access.js';
+const ticketDir=await fs.mkdtemp(path.join(os.tmpdir(),'lilly-calendar-test-tickets-'));
+const previousTicketDir=process.env.CALENDAR_CONNECT_TICKET_DIR;
+process.env.CALENDAR_CONNECT_TICKET_DIR=ticketDir;
+const {calendarQuery,CALENDAR_SCOPE,calendarConnectLink,mountCalendarConnect}=await import('../src/calendar-access.js');
+after(async()=>{
+ if(previousTicketDir===undefined)delete process.env.CALENDAR_CONNECT_TICKET_DIR;else process.env.CALENDAR_CONNECT_TICKET_DIR=previousTicketDir;
+ await fs.rm(ticketDir,{recursive:true,force:true});
+});
 import {createDriveOAuth,DRIVE_REDIRECT_URI} from '../src/drive-oauth.js';
 import {parseCommand} from '../sms-gateway/src/commands.js';
 function response(){return {cookies:[],set(){return this},status(v){this.statusCode=v;return this},type(){return this},send(v){this.body=v;return this},json(v){this.body=v;return this},cookie(n,v,o){this.cookies.push({n,v,o});return this},clearCookie(){return this},redirect(s,u){this.statusCode=s;this.location=u;return this}}}
