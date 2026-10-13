@@ -15,7 +15,7 @@ export async function discoverDailyJobs(context){
  const today=localDay();
  let state={};
  try{state=JSON.parse(fs.readFileSync(file,'utf8'))}catch{}
- if(state.date===today&&state.completed)return {status:'already_checked_today',newJobs:0,lastRun:state.finishedAt};
+ if(state.date===today&&state.completed){console.log('[daily-discovery] cached '+JSON.stringify((state.results||[]).map(r=>({role:r.role,found:r.found,queued:r.queued,issues:r.issues}))).slice(0,900));return {status:'already_checked_today',newJobs:0,lastRun:state.finishedAt};}
  const ledger=await readApplicationLedger();
  const known=new Set(ledger.map(j=>j.id));
  const results=[],issues=[];
