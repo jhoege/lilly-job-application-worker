@@ -20,7 +20,7 @@ export function evaluateSearchCandidate(job,role){
  if(salary&&salary.max<QUALIFICATION_TARGET)return {eligible:false,reason:'salary_below_target'};
  return {eligible:true,salary,qualification:salary?'salary_range_matches':'salary_not_disclosed'};
 }
-export async function searchJobs(context,command){
+export async function searchJobs(context,command,{maxCards=10,maxResults=6}={}){
  if(!context)throw Error('LinkedIn browser is not ready');
  const results=[],seen=new Set(),issues=[];
  for(const query of searchUrls(command)){
@@ -68,7 +68,7 @@ export async function searchJobs(context,command){
     })).catch(()=>({error:'page unavailable'}));
     console.log('[job-search-diagnostic] '+JSON.stringify({role:command.role,remote:query.remote,...diagnostic}));
    }
-   for(const job of cards){
+   for(const job of cards.slice(0,Math.max(1,Math.min(10,maxCards)))){
     if(seen.has(job.id))continue;seen.add(job.id);
     job.remoteSearch=query.remote;job.url='https://www.linkedin.com/jobs/view/'+job.id+'/';
     let check=evaluateSearchCandidate(job,command.role);
@@ -93,7 +93,7 @@ export async function searchJobs(context,command){
      if(check.eligible)results.push({...job,...check});
     }catch{issues.push('Some posting details could not be verified');}
     finally{await details.close().catch(()=>{});}
-    if(results.length>=6)break;
+    if(results.length>=maxResults)break;
    }
    if(!cards.length)issues.push('LinkedIn returned no readable job cards');
   }catch{issues.push('LinkedIn search timed out or was unavailable');}
