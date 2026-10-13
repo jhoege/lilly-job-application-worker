@@ -24,7 +24,7 @@ export async function discoverDailyJobs(context){
  console.log('[daily-discovery] start date='+today);
  for(const role of roles){
   try{
-   const search=await searchJobs(context,{role,mode:'local_and_remote'});
+   const search=await searchJobs(context,{role,mode:'local_and_remote'},{maxCards:4,maxResults:3});
    let queued=0;
    for(const candidate of search.results||[]){
     const id=String(candidate.id||'');
