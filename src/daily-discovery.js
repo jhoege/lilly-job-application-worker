@@ -6,6 +6,7 @@ import {salaryRequest} from './application-support.js';
 import {verifiedSubmission,excludedApplication,uncertainSubmission} from './job-policy.js';
 
 const file=process.env.DAILY_JOB_DISCOVERY_STATE_FILE||'/data/daily-job-discovery.json';
+const discoveryVersion='2026-10-13-card-parser-v2';
 const roles=['Director of Operations','Vice President of Operations','Director of Continuous Improvement'];
 function localDay(){
  return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
@@ -15,7 +16,7 @@ export async function discoverDailyJobs(context){
  const today=localDay();
  let state={};
  try{state=JSON.parse(fs.readFileSync(file,'utf8'))}catch{}
- if(state.date===today&&state.completed){console.log('[daily-discovery] cached '+JSON.stringify((state.results||[]).map(r=>({role:r.role,found:r.found,queued:r.queued,issues:r.issues}))).slice(0,900));return {status:'already_checked_today',newJobs:0,lastRun:state.finishedAt};}
+ if(state.date===today&&state.completed&&state.version===discoveryVersion){console.log('[daily-discovery] cached '+JSON.stringify((state.results||[]).map(r=>({role:r.role,found:r.found,queued:r.queued,issues:r.issues}))).slice(0,900));return {status:'already_checked_today',newJobs:0,lastRun:state.finishedAt};}
  const ledger=await readApplicationLedger();
  const known=new Set(ledger.map(j=>j.id));
  const results=[],issues=[];
@@ -47,7 +48,7 @@ export async function discoverDailyJobs(context){
  const finishedAt=new Date().toISOString();
  const completed=results.length===roles.length;
  fs.mkdirSync(path.dirname(file),{recursive:true});
- fs.writeFileSync(file,JSON.stringify({date:today,completed,finishedAt,found,results,issues}),{mode:0o600});
+ fs.writeFileSync(file,JSON.stringify({date:today,version:discoveryVersion,completed,finishedAt,found,results,issues}),{mode:0o600});
  console.log('[daily-discovery] finished newJobs='+found+' completed='+completed);
  return {status:completed?'completed':'partial',newJobs:found,results,issues};
 }
