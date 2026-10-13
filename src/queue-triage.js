@@ -299,7 +299,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
       const fields=await fieldsOnPage(page);
       if(!fields){status='form_unavailable';break}
       const missing=[],fillErrors=[],unknownFields=[];
-      const resumePage=packet&&!packetSelected&&await page.locator(FORM_SELECTOR).evaluate(d=>/^Resume\s*[*]?$/m.test(d.innerText||'')&&![...d.querySelectorAll('button')].some(b=>/^submit application$/i.test((b.innerText||'').trim())));
+      const resumePage=packet&&!packetSelected&&await page.locator(FORM_SELECTOR).evaluate(d=>/^Resume\s*[*]?$/m.test(d.innerText||'')||[...d.querySelectorAll('button')].some(b=>/upload resume/i.test(b.innerText||b.getAttribute('aria-label')||'')));
       if(packet&&!packetSelected&&(resumePage||await page.locator(FORM_SELECTOR+' input[type=file]').count())){
        const uploaded=await uploadResumePacket(page,FORM_SELECTOR,packet);
        if(!uploaded.ok){status='needs_manual_review';diagnostic={reason:uploaded.reason};break;}
