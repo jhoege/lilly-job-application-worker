@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {parseCommand} from '../sms-gateway/src/commands.js';
-import {smsJobSummary,smsRecordAnswer} from './google-answers.js';
+import {smsJobSummary,smsRecordAnswer,readApplicationLedger,upsertApplicationStatus} from './google-answers.js';
+import {salaryRequest} from './application-support.js';
 import {runAutoTriage} from './auto-triage.js';
 import {getTriageStatus} from './queue-triage.js';
 import {searchJobs} from './sms-search.js';
@@ -40,7 +41,25 @@ export async function handleSmsCommand(message,requestId,context){
   setTimeout(async()=>{
    try{
     op.status='running';save();
-    if(cmd.kind==='job_search'){const result=await searchJobs(context,cmd);op.reply=result.reply;op.resultCount=result.results.length;}
+    if(cmd.kind==='job_search'){
+     const result=await searchJobs(context,cmd);
+     const ledger=await readApplicationLedger(),existing=new Set(ledger.map(j=>j.id)),ids=[];
+     for(const j of result.results||[]){
+      if(existing.has(String(j.id)))continue;
+      const salary=j.salary?salaryRequest({min:j.salary.min,max:j.salary.max}).amount:
+       j.salaryResearch?salaryRequest({market:j.salaryResearch.median||((j.salaryResearch.min+j.salaryResearch.max)/2)}).amount:null;
+      if(!salary)continue;
+      const job={id:String(j.id),company:j.company||'',title:j.title||'',url:j.url,salaryRequest:salary,source:'SMS job search'};
+      const saved=await upsertApplicationStatus(job,'Queued - SMS search','Discovered by user-requested SMS search',{source:'SMS job search'});
+      if(saved.updated){ids.push(job.id);existing.add(job.id)}
+     }
+     op.resultCount=result.results.length;
+     op.reply=result.reply+' '+ids.length+' new job(s) added to Lilly application queue.';
+     if(ids.length){
+      const applied=await runAutoTriage(context,{force:true,ids});
+      op.reply+=' '+(applied.started?'Applications checked: '+(applied.results||[]).length+'.':'Application processing busy; queued for next scheduled run.');
+     }
+    }
     else{
      const result=await runAutoTriage(context,{force:true});
      if(result.started===false)throw Error('An application run is already active; retry after it finishes');
