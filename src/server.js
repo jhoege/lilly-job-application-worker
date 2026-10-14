@@ -1,4 +1,5 @@
 import express from 'express';
+import {startSupabasePilot} from './supabase-pilot.js';
 import {SALARY_VALIDATION_VERSION} from './salary-validation.js';
 import crypto from 'node:crypto';
 import { chromium } from 'playwright';
@@ -16,6 +17,7 @@ import {diagnoseApply} from './diagnose-apply.js';
 import {parseCommand} from '../sms-gateway/src/commands.js';
 
 const app = express();
+void startSupabasePilot();
 app.use('/integrations/calendar/connect',express.urlencoded({extended:false,limit:'1kb'}));
 mountCalendarConnect(app);
 app.get('/integrations/google-drive/callback', (req,res)=>String(req.query.state||'').startsWith('calendar-')?calendarOAuth.callback(req,res):driveOAuth.callback(req,res));
