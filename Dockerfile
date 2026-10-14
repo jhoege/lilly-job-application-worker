@@ -14,5 +14,5 @@ ENV BROWSER_PROFILE_PATH=/data/browser-profile
 
 EXPOSE 3000
 
-CMD ["npm", "start"]
+CMD ["node", "src/server.js"]
 
