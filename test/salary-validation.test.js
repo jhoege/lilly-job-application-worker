@@ -81,6 +81,7 @@ for(const mismatch of [false,true])test('worker uses exact posting and '+(mismat
    ...selector==='[data-lilly-application="true"]'?dialog:{}})};
  const source=fs.readFileSync(new URL('../src/queue-triage.js',import.meta.url),'utf8').replace(/^import .*;\n/gm,'').replace(/^export /gm,'');
  const sandbox={Date,setTimeout,clearTimeout,console,process:{env:{AUTO_SUBMIT_ENABLED:'true',TEST_MODE:'false'}},excludedApplication,excludedEmployer,
+  acquireJobClaim:async()=>({claimed:true,beginSubmit:async()=>{},finish:async()=>{}}),
   readApprovedAnswers:async()=>[],readSubmittedJobIds:async()=>new Set(),readApplicationLedger:async()=>[application],readSearchLedger:async()=>[[],search],
   getQueue:()=>[job],archivePosting:async()=>({ok:true}),readPostingSalaryText:async()=>({description:'Base salary $190,000–$220,000 plus bonus',header:''}),
   authoritativeSalary,resolveSalaryBaseline,validateSalaryTarget,desiredSalaryQuestion,salaryAnswerMatches,validateSalaryReview,SALARY_VALIDATION_VERSION,salaryRequest,

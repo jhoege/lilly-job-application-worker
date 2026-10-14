@@ -25,6 +25,15 @@ export async function runSupabasePilot({env=process.env,fetchImpl=fetch}={}) {
     expiredProcessingRecovered:recovery.claimed===true,
     protectedStatesBlocked:protectedResults.every(x=>x.claimed===false),
     snapshotReadable:prepared.snapshot_records>=47};
+  if(env.LILLY_JOB_CLAIMS==='supabase'){
+    const p_key='claim-test:'+run,p_token=crypto.randomUUID();
+    const first=await rpc('lilly_job_claim',{p_key,p_token});
+    const second=await rpc('lilly_job_claim',{p_key,p_token:crypto.randomUUID()});
+    const marked=await rpc('lilly_job_transition',{p_key,p_token,p_action:'begin_submit',p_outcome:''});
+    const finished=await rpc('lilly_job_transition',{p_key,p_token,p_action:'finish',p_outcome:'technical_failure'});
+    const retry=await rpc('lilly_job_claim',{p_key,p_token:crypto.randomUUID()});
+    checks.liveQueueGate=first.claimed===true&&second.claimed===false&&marked.ok===true&&finished.ok===true&&retry.claimed===false;
+  }
   return {status:Object.values(checks).every(Boolean)?'passed':'failed',checks,run};
 }
 

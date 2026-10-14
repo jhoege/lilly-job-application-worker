@@ -1,4 +1,5 @@
 import {getQueue,salaryRequest} from './application-support.js';
+import {acquireJobClaim} from './job-claims.js';
 import {readApprovedAnswers,appendUnknownQuestions,readSubmittedJobIds,readApplicationLedger,logVerifiedLinkedInApplication,upsertApplicationStatus,setSalaryBaseline,readSearchLedger,recordSalaryAnswerEvidence} from './google-answers.js';
 import {excludedEmployer,excludedApplication} from './job-policy.js';
 import {archivePosting} from './posting-archive.js';
@@ -183,7 +184,10 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
     let watchdog=null;
     let timedOut=false;
     let submissionAttempted=false;
+    let claim=null;
     try{
+     claim=await acquireJobClaim(job);
+     if(!claim.claimed){results.push({jobId:job.id,status:'skipped_claim_protected',visited:false});continue;}
      page=await context.newPage();
      activePage=page;
      // Abort a single slow job without blocking the remaining queue.
@@ -398,6 +402,7 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
         setStage('submitting_completed_application');
         submissionAttempted=true;
         await upsertApplicationStatus(job,'Submission unverified - Verify before retry','Submission action about to be attempted; verification required before any retry');
+        await claim.beginSubmit();
         await submit.click({timeout:8000});
         const confirmation=page.getByText(/your application was sent to|application submitted successfully|application was submitted/i).first();
         if(await confirmation.waitFor({state:'visible',timeout:12000}).then(()=>true).catch(()=>false)){
@@ -450,6 +455,18 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
      if(page)await page.close().catch(()=>{});
      const last=results[results.length-1];
      const outcome=last?.jobId===job.id?last:{jobId:job.id,status:'unknown'};
+     if(!claim){
+      outcome.claimError='Claim database unavailable; job was not opened';
+      recordResult(outcome);continue;
+     }
+     if(claim?.claimed){
+      try{await claim.finish(outcome.status)}
+      catch(e){outcome.claimError=String(e.message).slice(0,120);console.error('[job-claim] job='+job.id+' '+outcome.claimError)}
+     }
+     if(outcome.status==='skipped_claim_protected'){
+      console.log('[job-claim] job='+job.id+' protected or owned by another worker');
+      recordResult(outcome);continue;
+     }
      if(!submittedIds.has(job.id)&&!['skipped_already_logged','skipped_excluded','submitted_verified','already_applied_logged'].includes(outcome.status)){
       const label=displayStatus[outcome.status]||'Needs review';
       const display=(outcome.draftSaved||outcome.jobSaved)&&!['closed','submitted_verified','submission_unverified'].includes(outcome.status)?'Saved - '+label:label;
