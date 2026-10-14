@@ -9,7 +9,7 @@ export async function runSupabasePilot({env=process.env,fetchImpl=fetch}={}) {
     return {status:'needs_configuration'};
   const rpc=async(name,body)=>{
     const r=await fetchImpl(base+'/rest/v1/rpc/'+name,{
-      method:'POST',headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json'},
+      method:'POST',headers:{apikey:key,...(key.startsWith('eyJ')?{Authorization:'Bearer '+key}:{}),'Content-Type':'application/json'},
       body:JSON.stringify(body),signal:AbortSignal.timeout(15000)
     });
     if(!r.ok) throw Error('Supabase pilot '+name+' HTTP '+r.status);
