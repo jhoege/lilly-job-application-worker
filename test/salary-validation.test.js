@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {startDateQuestion,applicationStartDate} from '../src/start-date.js';
 import {annualSalaryDetails,annualSalaryRange,excludedApplication,excludedEmployer} from '../src/job-policy.js';
 import {salaryRequest} from '../src/application-support.js';
 import {authoritativeSalary,resolveSalaryBaseline,validateSalaryTarget,desiredSalaryQuestion,salaryAnswerMatches,validateSalaryReview,SALARY_VALIDATION_VERSION} from '../src/salary-validation.js';
@@ -84,7 +85,7 @@ for(const mismatch of [false,true])test('worker uses exact posting and '+(mismat
   acquireJobClaim:async()=>({claimed:true,beginSubmit:async()=>{},finish:async()=>{}}),
   readApprovedAnswers:async()=>[],readSubmittedJobIds:async()=>new Set(),readApplicationLedger:async()=>[application],readSearchLedger:async()=>[[],search],
   getQueue:()=>[job],archivePosting:async()=>({ok:true}),readPostingSalaryText:async()=>({description:'Base salary $190,000–$220,000 plus bonus',header:''}),
-  authoritativeSalary,resolveSalaryBaseline,validateSalaryTarget,desiredSalaryQuestion,salaryAnswerMatches,validateSalaryReview,SALARY_VALIDATION_VERSION,salaryRequest,
+  startDateQuestion,applicationStartDate,authoritativeSalary,resolveSalaryBaseline,validateSalaryTarget,desiredSalaryQuestion,salaryAnswerMatches,validateSalaryReview,SALARY_VALIDATION_VERSION,salaryRequest,
   setSalaryBaseline:async(_job,baseline,amount)=>{application.salaryRequest=String(amount);application.salaryBaseline={...baseline,validationVersion:SALARY_VALIDATION_VERSION};},
   recordSalaryAnswerEvidence:async(_job,evidence)=>{assert.equal(evidence.target,212500);evidenceWritten++;},
   logVerifiedLinkedInApplication:async()=>({added:true}),upsertApplicationStatus:async()=>({updated:true})};

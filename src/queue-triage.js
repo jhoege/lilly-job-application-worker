@@ -1,3 +1,4 @@
+import {startDateQuestion,applicationStartDate} from './start-date.js';
 import {getQueue,salaryRequest} from './application-support.js';
 import {acquireJobClaim} from './job-claims.js';
 import {readApprovedAnswers,appendUnknownQuestions,readSubmittedJobIds,readApplicationLedger,logVerifiedLinkedInApplication,upsertApplicationStatus,setSalaryBaseline,readSearchLedger,recordSalaryAnswerEvidence} from './google-answers.js';
@@ -25,6 +26,7 @@ const aliases=new Map([
  ['will you now or in the future require sponsorship for employment visa status e g h 1b visa status','require visa sponsorship now or later']
 ]);
 function lookupAnswer(label,approved,advertisedSalary){
+ if(startDateQuestion(label))return applicationStartDate();
  const n=normalize(label).replace(/ required$/,'');
  let key=aliases.get(n)||n;
  if(/(furnish|provide|show).*(documentation|documents|proof)/.test(n))return approved.find(a=>normalize(a.question)===n)?.answer;
@@ -314,18 +316,20 @@ export async function triageQueue(context,{limit=5,offset=0,ids=null,jobsOverrid
        // Trust pre-filled values from the user's prior applications; never overwrite them.
        if(packetSelected&&f.type==='file')continue;
        const salaryField=desiredSalaryQuestion(f.label);
-       if((!f.required||f.filled)&&!salaryField)continue;
+       const startDateField=startDateQuestion(f.label);
+       if((!f.required||f.filled)&&!salaryField&&!startDateField)continue;
        const answer=lookupAnswer(f.label,approved,advertisedSalary);
        // Only fill clearly labeled text-like fields. No guessed dropdown, radio, checkbox, file or identity answers.
        if(answer!==undefined&&f.label){
         const currentFields=await fieldsOnPage(page);
         const currentField=currentFields?.find(x=>x.index===f.index&&x.label===f.label);
-        if(currentField?.filled&&!salaryField)continue;
+        if(currentField?.filled&&!salaryField&&!startDateField)continue;
         if(currentField)f.name=currentField.name;
         let input=page.locator(FORM_SELECTOR+' [data-lilly-field="'+f.index+'"]');
         try{
-         if(['text','email','tel','number','textarea'].includes(f.type)){
-          await input.fill(String(answer),{timeout:2500});
+         if(['text','email','tel','number','textarea','date'].includes(f.type)){
+          const value=startDateField&&f.type==='date'?applicationStartDate(new Date(),'iso'):String(answer);
+          await input.fill(value,{timeout:2500});
          }else if(f.type==='radio'){
           const wanted=normalize(/willing to work overtime as needed/i.test(f.label)&&/^I am open to working as required/i.test(answer)?'Yes':answer);
           const group=page.locator(FORM_SELECTOR+' input[type=radio][data-lilly-field]');
